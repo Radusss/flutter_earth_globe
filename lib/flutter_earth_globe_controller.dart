@@ -13,6 +13,8 @@ import 'point_connection.dart';
 
 import 'point_connection_style.dart';
 
+import 'trail.dart';
+
 /// This class is the controller of the [RotatingGlobe] widget.
 ///
 /// It is used to add/remove/update points and connections.
@@ -26,6 +28,7 @@ class FlutterEarthGlobeController extends ChangeNotifier {
   List<Point> points = []; // The points on the globe.
   List<AnimatedPointConnection> connections =
       []; // The connections between points.
+  List<Trail> trails = []; // The trails (poly-lines) on the globe.
   SphereStyle sphereStyle; // The style of the sphere.
   ui.Image? surface; // The surface image of the sphere.
   ui.Image? background; // The background image of the sphere.
@@ -483,6 +486,35 @@ class FlutterEarthGlobeController extends ChangeNotifier {
 
     // Replace the Point instance with an updated copy.
     points[index] = points[index].copyWith(coordinates: coordinates);
+    notifyListeners();
+  }
+
+  /// Adds a [trail] poly-line to the globe.
+  void addTrail(Trail trail) {
+    trails.add(trail);
+    notifyListeners();
+  }
+
+  /// Updates the properties of an existing trail.
+  void updateTrail(
+    String id, {
+    List<GlobeCoordinates>? vertices,
+    TrailStyle? style,
+    double? altitude,
+  }) {
+    final index = trails.indexWhere((t) => t.id == id);
+    if (index == -1) return;
+    trails[index] = trails[index].copyWith(
+      vertices: vertices,
+      style: style,
+      altitude: altitude,
+    );
+    notifyListeners();
+  }
+
+  /// Removes the trail with [id].
+  void removeTrail(String id) {
+    trails.removeWhere((t) => t.id == id);
     notifyListeners();
   }
 

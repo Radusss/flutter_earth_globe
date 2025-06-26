@@ -1,5 +1,6 @@
 import 'package:flutter_earth_globe/globe_coordinates.dart';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'point.dart';
 import 'line_helper.dart';
@@ -10,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:vector_math/vector_math_64.dart' as vector;
 
 import 'misc.dart';
+import 'trail.dart';
 
 /// A custom painter that draws the foreground of the earth globe.
 class ForegroundPainter extends CustomPainter {
@@ -62,6 +64,7 @@ class ForegroundPainter extends CustomPainter {
     required this.rotationX,
     required this.zoomFactor,
     required this.points,
+    required this.trails,
     this.hoverPoint,
     this.clickPoint,
     this.onPointClicked,
@@ -75,6 +78,7 @@ class ForegroundPainter extends CustomPainter {
       bool isVisible) hoverOverConnection;
   VoidCallback? onPointClicked;
   final List<AnimatedPointConnection> connections;
+  final List<Trail> trails;
   final Offset? hoverPoint;
   final Offset? clickPoint;
   final double radius;
@@ -201,6 +205,83 @@ class ForegroundPainter extends CustomPainter {
         }
       } else {
         hoverOverConnection(connection.id, info?['midPoint'], false, false);
+      }
+    }
+
+    // --- Draw Trails -------------------------------------------------------
+    if (trails.isNotEmpty) {
+      for (final trail in trails) {
+        if (trail.vertices.length < 2) continue; // need at least 2 points
+
+        final path = Path();
+
+        Offset? firstPoint;
+
+        for (int i = 0; i < trail.vertices.length; i++) {
+          final coords = trail.vertices[i];
+          // Apply altitude similar to points
+          final vector.Vector3 cart3D = getSpherePosition3D(
+            coords,
+            radius + trail.altitude,
+            rotationY,
+            rotationZ,
+          );
+          // Skip vertices on back hemisphere that are not above horizon
+          if (cart3D.x <= 0) {
+            // Use same horizon visibility logic as for points
+            final Offset cart2D = Offset(center.dx + cart3D.y, center.dy - cart3D.z);
+            final dx = cart2D.dx - center.dx;
+            final dy = cart2D.dy - center.dy;
+            final dist = math.sqrt(dx * dx + dy * dy);
+            if (dist < radius) {
+              // invisible, skip
+              continue;
+            }
+          }
+
+          final Offset cart2D = Offset(center.dx + cart3D.y, center.dy - cart3D.z);
+
+          if (firstPoint == null) {
+            path.moveTo(cart2D.dx, cart2D.dy);
+            firstPoint = cart2D;
+          } else {
+            path.lineTo(cart2D.dx, cart2D.dy);
+          }
+        }
+
+        if (firstPoint != null) {
+          final paint = Paint()
+            ..color = trail.style.color
+            ..strokeWidth = trail.style.width
+            ..style = PaintingStyle.stroke
+            ..isAntiAlias = true;
+
+          if (trail.style.dashArray != null && trail.style.dashArray!.length >= 2) {
+            _drawDashedPath(canvas, path, paint, trail.style.dashArray!);
+          } else {
+            canvas.drawPath(path, paint);
+          }
+        }
+      }
+    }
+  }
+
+  // Helper to draw dashed paths since Canvas has no built-in API.
+  void _drawDashedPath(Canvas canvas, Path origPath, Paint paint, List<double> dashArray) {
+    final ui.PathMetrics metrics = origPath.computeMetrics();
+    for (final ui.PathMetric metric in metrics) {
+      double distance = 0.0;
+      bool draw = true;
+      int index = 0;
+      while (distance < metric.length) {
+        final length = dashArray[index % dashArray.length];
+        if (draw) {
+          final extracted = metric.extractPath(distance, distance + length);
+          canvas.drawPath(extracted, paint);
+        }
+        distance += length;
+        draw = !draw;
+        index++;
       }
     }
   }
