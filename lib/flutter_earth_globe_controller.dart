@@ -463,6 +463,29 @@ class FlutterEarthGlobeController extends ChangeNotifier {
   /// A callback function that is called when the globe is loaded.
   VoidCallback? onLoaded;
 
+  /// Updates the coordinates of an existing [Point] identified by [id].
+  ///
+  /// This is a lightweight helper that keeps the same [Point] metadata
+  /// (style, label, callbacks, etc.) and only changes its geographic
+  /// position. Use it inside an animation loop instead of deleting and
+  /// re-adding the point each frame.
+  ///
+  /// Example usage:
+  /// ```dart
+  /// controller.updatePointCoordinates(
+  ///   'plane_42',
+  ///   const GlobeCoordinates(48.8566, 2.3522), // Paris
+  /// );
+  /// ```
+  void updatePointCoordinates(String id, GlobeCoordinates coordinates) {
+    final index = points.indexWhere((element) => element.id == id);
+    if (index == -1) return; // No point with that id.
+
+    // Replace the Point instance with an updated copy.
+    points[index] = points[index].copyWith(coordinates: coordinates);
+    notifyListeners();
+  }
+
   /// Disposes the controller.
   @override
   void dispose() {
