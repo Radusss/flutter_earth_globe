@@ -109,11 +109,12 @@ double getScaleFactor(Offset point, Offset center, double radius, bool isXAxis,
   // Normalize Z-coordinate relative to the radius and adjust for zoom factor
   double normalizedZ = (zCoord / radius).clamp(-1, 1) * zoomFactor;
 
-  // Check if the point is behind the sphere (not visible)
-  if (normalizedZ < 0) return 0;
+  // If the point is behind the centre (normalizedZ < 0) it is farther from
+  // the camera but can still be visible if it protrudes beyond the horizon.
+  // Treat the distance as its absolute value so the scale never collapses to
+  // zero.  This keeps "atmosphere" points showing while they orbit.
 
-  // Perspective scaling factor
-  double perspectiveScaling = 0.5 + 0.5 * normalizedZ;
+  double perspectiveScaling = 0.5 + 0.5 * normalizedZ.abs();
 
   // Calculate the scaling factor based on the distance and perspective
   double scaleFactor = max(0.6, 1 - distance / radius) * perspectiveScaling;

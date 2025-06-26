@@ -1,4 +1,5 @@
 import 'package:flutter_earth_globe/globe_coordinates.dart';
+import 'dart:math' as math;
 
 import 'point.dart';
 import 'line_helper.dart';
@@ -95,8 +96,16 @@ class ForegroundPainter extends CustomPainter {
 
     for (var point in points) {
       final pointPaint = Paint()..color = point.style.color;
-      vector.Vector3 cartesian3D =
-          getSpherePosition3D(point.coordinates, radius, rotationY, rotationZ);
+      // Allow points to "float" above the globe surface by pushing them
+      // further away from the centre by `point.altitude` logical units.
+      final double pointRadius = radius + point.altitude;
+
+      vector.Vector3 cartesian3D = getSpherePosition3D(
+        point.coordinates,
+        pointRadius,
+        rotationY,
+        rotationZ,
+      );
       Offset cartesian2D =
           Offset(center.dx + cartesian3D.y, center.dy - cartesian3D.z);
 
@@ -111,9 +120,35 @@ class ForegroundPainter extends CustomPainter {
       // print(
       //     'center: $center - point: ${point.coordinates} cartesian2D: $cartesian2D - cartesian3D: $cartesian3D');
 
-      if (cartesian3D.x > 0) {
-        final rect = getRectOnSphere(cartesian3D, cartesian2D, center, radius,
-            zoomFactor, point.style.size);
+      // A point is visible if either:
+      //   • It is on the front hemisphere of the Earth (cartesian3D.x > 0) OR
+      //   • It is on the rear hemisphere but protrudes outside the Earth
+      //     disc in the 2-D projection (i.e. altitude makes it visible above
+      //     the horizon).
+
+      bool isFrontHemisphere = cartesian3D.x > 0;
+
+      bool isAboveHorizon = false;
+      if (!isFrontHemisphere) {
+        // Distance of the 2-D projection from the centre of the Earth disc.
+        final dx = cartesian2D.dx - center.dx;
+        final dy = cartesian2D.dy - center.dy;
+        final distFromCenter = math.sqrt(dx * dx + dy * dy);
+
+        // If the projection lies outside the Earth radius the point is
+        // geometrically visible (it sticks out from behind the planet).
+        isAboveHorizon = distFromCenter >= radius;
+      }
+
+      if (isFrontHemisphere || isAboveHorizon) {
+        final rect = getRectOnSphere(
+          cartesian3D,
+          cartesian2D,
+          center,
+          pointRadius,
+          zoomFactor,
+          point.style.size,
+        );
         canvas.drawOval(rect, pointPaint);
         // if(rect.contains())
         if (localHover != null && rect.contains(localHover)) {

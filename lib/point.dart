@@ -39,6 +39,16 @@ class Point {
   /// A callback function that is called when the point is hovered over.
   final VoidCallback? onHover;
 
+  /// Distance above the globe surface where the point should be rendered.
+  ///
+  /// A value of 0.0 (default) means the point sits directly on the globe
+  /// surface.  Positive values place the point further away from the centre
+  /// of the sphere, giving the effect of "floating" above the ground.  The
+  /// value is expressed in the same logical units that the globe's `radius`
+  /// uses when the [FlutterEarthGlobe] widget is created, so something like
+  /// `radius * 0.05` will position the point ~5 % above the surface.
+  final double altitude;
+
   /// Creates a new instance of the [Point] class.
   ///
   /// The [coordinates] parameter represents the coordinates of the point on the globe.
@@ -51,6 +61,7 @@ class Point {
   /// The [labelTextStyle] parameter is the text style of the label.
   /// The [onTap] parameter is a callback function that is called when the point is tapped.
   /// The [onHover] parameter is a callback function that is called when the point is hovered over.
+  /// The [altitude] parameter is the distance above the globe surface where the point should be rendered.
   ///
   /// Example usage:
   /// ```dart
@@ -71,6 +82,7 @@ class Point {
   ///     onHover: () {
   ///      print('Point hovered over');
   ///      },
+  ///     altitude: 0.05,
   ///   );
   /// ```
   Point({
@@ -84,6 +96,7 @@ class Point {
     this.labelTextStyle,
     this.onTap,
     this.onHover,
+    this.altitude = 0.0,
   });
 
   /// Creates a copy of the [Point] object with the specified properties overridden.
@@ -100,6 +113,7 @@ class Point {
     TextStyle? labelTextStyle,
     VoidCallback? onTap,
     VoidCallback? onHover,
+    double? altitude,
   }) {
     return Point(
       coordinates: coordinates ?? this.coordinates,
@@ -112,6 +126,7 @@ class Point {
       labelTextStyle: labelTextStyle ?? this.labelTextStyle,
       onTap: onTap ?? this.onTap,
       onHover: onHover ?? this.onHover,
+      altitude: altitude ?? this.altitude,
     );
   }
 }
