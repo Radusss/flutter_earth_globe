@@ -56,7 +56,7 @@ class FlutterEarthGlobeController extends ChangeNotifier {
     ImageProvider? surface,
     ImageProvider? background,
     this.rotationSpeed = 0.2,
-    this.isZoomEnabled = true,
+    this.isZoomEnabled = false,
     this.zoom = 1,
     this.maxZoom = 1.6,
     this.minZoom = 0.1,
@@ -452,6 +452,8 @@ class FlutterEarthGlobeController extends ChangeNotifier {
   /// controller.setZoom(2);
   /// ```
   void setZoom(double zoom) {
+    // Prevent zoom changes if zooming is disabled
+    if (!isZoomEnabled) return;
     assert(zoom >= minZoom && zoom <= maxZoom);
     if (zoom < minZoom) {
       zoom = minZoom;
