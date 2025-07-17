@@ -213,10 +213,9 @@ class ForegroundPainter extends CustomPainter {
       for (final trail in trails) {
         if (trail.vertices.length < 2) continue; // need at least 2 points
 
-        final path = Path();
-
-        Offset? firstPoint;
-
+        // Convert vertices to 2D points, filtering out non-visible ones
+        final List<Offset> visiblePoints = [];
+        
         for (int i = 0; i < trail.vertices.length; i++) {
           final coords = trail.vertices[i];
           // Apply altitude similar to points
@@ -240,27 +239,15 @@ class ForegroundPainter extends CustomPainter {
           }
 
           final Offset cart2D = Offset(center.dx + cart3D.y, center.dy - cart3D.z);
-
-          if (firstPoint == null) {
-            path.moveTo(cart2D.dx, cart2D.dy);
-            firstPoint = cart2D;
-          } else {
-            path.lineTo(cart2D.dx, cart2D.dy);
-          }
+          visiblePoints.add(cart2D);
         }
 
-        if (firstPoint != null) {
-          final paint = Paint()
-            ..color = trail.style.color
-            ..strokeWidth = trail.style.width
-            ..style = PaintingStyle.stroke
-            ..isAntiAlias = true;
+        if (visiblePoints.length < 2) continue;
 
-          if (trail.style.dashArray != null && trail.style.dashArray!.length >= 2) {
-            _drawDashedPath(canvas, path, paint, trail.style.dashArray!);
-          } else {
-            canvas.drawPath(path, paint);
-          }
+        if (trail.style.useMagicalEffect) {
+          _drawMagicalTrail(canvas, visiblePoints, trail.style);
+        } else {
+          _drawSimpleTrail(canvas, visiblePoints, trail.style);
         }
       }
     }
@@ -282,6 +269,87 @@ class ForegroundPainter extends CustomPainter {
         distance += length;
         draw = !draw;
         index++;
+      }
+    }
+  }
+
+  // Helper to draw a simple trail (original behavior)
+  void _drawSimpleTrail(Canvas canvas, List<Offset> points, TrailStyle style) {
+    final path = Path();
+    path.moveTo(points[0].dx, points[0].dy);
+    for (int i = 1; i < points.length; i++) {
+      path.lineTo(points[i].dx, points[i].dy);
+    }
+
+    // Optional glow/halo
+    if (style.glowColor != null && style.glowWidth > 0) {
+      final glowPaint = Paint()
+        ..color = style.glowColor!
+        ..strokeWidth = style.glowWidth
+        ..style = PaintingStyle.stroke
+        ..isAntiAlias = true
+        ..maskFilter = ui.MaskFilter.blur(ui.BlurStyle.normal, style.glowWidth * 0.35);
+
+      if (style.dashArray != null && style.dashArray!.length >= 2) {
+        _drawDashedPath(canvas, path, glowPaint, style.dashArray!);
+      } else {
+        canvas.drawPath(path, glowPaint);
+      }
+    }
+
+    final paint = Paint()
+      ..color = style.color
+      ..strokeWidth = style.width
+      ..style = PaintingStyle.stroke
+      ..isAntiAlias = true;
+
+    if (style.dashArray != null && style.dashArray!.length >= 2) {
+      _drawDashedPath(canvas, path, paint, style.dashArray!);
+    } else {
+      canvas.drawPath(path, paint);
+    }
+  }
+
+  // Helper to draw a magical trail with gradient colors and multiple layers
+  void _drawMagicalTrail(Canvas canvas, List<Offset> points, TrailStyle style) {
+    if (points.length < 2) return;
+
+    // Draw multiple trail layers for glow effect
+    for (int layer = 0; layer < style.magicalLayers; layer++) {
+      final layerWidth = style.width * (style.magicalLayers - layer) / style.magicalLayers * 2.0;
+      final layerOpacity = (layer + 1) / style.magicalLayers * style.magicalOpacity;
+
+      // Draw segments between consecutive points
+      for (int i = 1; i < points.length; i++) {
+        // Calculate progress through the trail (0.0 = tail, 1.0 = head)
+        final progress = i / (points.length - 1);
+        
+        // Get color for this position
+        final segmentColor = style.getColorForProgress(progress);
+        
+        // Calculate width variation (tail to head)
+        final segmentWidth = style.width + (progress * (style.width * (style.headWidthMultiplier - 1.0)));
+        final finalWidth = segmentWidth * layerWidth / style.width;
+        
+        // Calculate final opacity
+        final finalOpacity = segmentColor.opacity * progress * layerOpacity;
+        
+        final paint = Paint()
+          ..color = segmentColor.withOpacity(finalOpacity)
+          ..strokeWidth = finalWidth
+          ..style = PaintingStyle.stroke
+          ..strokeCap = StrokeCap.round
+          ..isAntiAlias = true;
+
+        // Add subtle blur for outer layers
+        if (layer > 0) {
+          paint.maskFilter = ui.MaskFilter.blur(
+            ui.BlurStyle.normal,
+            layerWidth * 0.15,
+          );
+        }
+
+        canvas.drawLine(points[i - 1], points[i], paint);
       }
     }
   }
