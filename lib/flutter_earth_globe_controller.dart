@@ -14,6 +14,7 @@ import 'point_connection.dart';
 import 'point_connection_style.dart';
 
 import 'trail.dart';
+import 'trail_attachment.dart';
 
 /// This class is the controller of the [RotatingGlobe] widget.
 ///
@@ -29,6 +30,7 @@ class FlutterEarthGlobeController extends ChangeNotifier {
   List<AnimatedPointConnection> connections =
       []; // The connections between points.
   List<Trail> trails = []; // The trails (poly-lines) on the globe.
+  List<TrailAttachment> trailAttachments = []; // Trail attachments that follow points.
   SphereStyle sphereStyle; // The style of the sphere.
   ui.Image? surface; // The surface image of the sphere.
   ui.Image? background; // The background image of the sphere.
@@ -294,6 +296,13 @@ class FlutterEarthGlobeController extends ChangeNotifier {
   /// ```
   void removePoint(String id) {
     points.removeWhere((element) => element.id == id);
+    
+    // Remove any trail attachments associated with this point
+    final attachmentsToRemove = trailAttachments.where((a) => a.pointId == id).map((a) => a.id).toList();
+    for (final attachmentId in attachmentsToRemove) {
+      removeTrailAttachment(attachmentId);
+    }
+    
     notifyListeners();
   }
 
@@ -488,7 +497,34 @@ class FlutterEarthGlobeController extends ChangeNotifier {
 
     // Replace the Point instance with an updated copy.
     points[index] = points[index].copyWith(coordinates: coordinates);
+    
+    // Update any trail attachments that follow this point
+    _updateAttachedTrails(id, coordinates);
+    
     notifyListeners();
+  }
+
+  /// Updates all trail attachments that follow the specified point.
+  void _updateAttachedTrails(String pointId, GlobeCoordinates pointCoordinates) {
+    for (final attachment in trailAttachments) {
+      if (attachment.pointId == pointId) {
+        // Generate new absolute vertices for the trail
+        final newVertices = attachment.generateAbsoluteVertices(pointCoordinates);
+        
+        // Find the corresponding trail and update it
+        final trailIndex = trails.indexWhere((t) => t.id == attachment.id);
+        if (trailIndex != -1) {
+          // Get the point's altitude for the trail
+          final pointIndex = points.indexWhere((p) => p.id == pointId);
+          final pointAltitude = pointIndex != -1 ? points[pointIndex].altitude : 0.0;
+          
+          trails[trailIndex] = trails[trailIndex].copyWith(
+            vertices: newVertices,
+            altitude: pointAltitude + attachment.altitudeOffset,
+          );
+        }
+      }
+    }
   }
 
   /// Adds a [trail] poly-line to the globe.
@@ -518,6 +554,93 @@ class FlutterEarthGlobeController extends ChangeNotifier {
   void removeTrail(String id) {
     trails.removeWhere((t) => t.id == id);
     notifyListeners();
+  }
+
+  /// Attaches a trail to a point. The trail will automatically follow the point's movement.
+  /// 
+  /// This is much more efficient than manually updating trail vertices each frame.
+  /// The trail pattern is defined by relative coordinates that maintain their offset from the point.
+  ///
+  /// Example usage:
+  /// ```dart
+  /// controller.attachTrailToPoint(TrailAttachment(
+  ///   id: 'whisper_1_trail',
+  ///   pointId: 'whisper_1',
+  ///   relativeVertices: TrailAttachment.createTrailingPattern(
+  ///     segmentCount: 25,
+  ///     segmentSpacing: 0.1,
+  ///   ),
+  ///   style: TrailStyle(useMagicalEffect: true),
+  /// ));
+  /// ```
+  void attachTrailToPoint(TrailAttachment attachment) {
+    // Remove any existing attachment with the same ID
+    trailAttachments.removeWhere((a) => a.id == attachment.id);
+    
+    // Add the new attachment
+    trailAttachments.add(attachment);
+    
+    // Find the point to get its current coordinates
+    final pointIndex = points.indexWhere((p) => p.id == attachment.pointId);
+    if (pointIndex == -1) {
+      // Point doesn't exist yet, trail will be created when point is moved
+      return;
+    }
+    
+    final point = points[pointIndex];
+    final trailVertices = attachment.generateAbsoluteVertices(point.coordinates);
+    
+    // Create the actual trail
+    final trail = Trail(
+      id: attachment.id,
+      vertices: trailVertices,
+      style: attachment.style,
+      altitude: point.altitude + attachment.altitudeOffset,
+    );
+    
+    // Remove any existing trail with the same ID and add the new one
+    trails.removeWhere((t) => t.id == attachment.id);
+    trails.add(trail);
+    
+    notifyListeners();
+  }
+
+  /// Removes a trail attachment and its associated trail.
+  void removeTrailAttachment(String attachmentId) {
+    trailAttachments.removeWhere((a) => a.id == attachmentId);
+    trails.removeWhere((t) => t.id == attachmentId);
+    notifyListeners();
+  }
+
+  /// Updates the properties of an existing trail attachment.
+  void updateTrailAttachment(
+    String id, {
+    List<GlobeCoordinates>? relativeVertices,
+    TrailStyle? style,
+    double? altitudeOffset,
+  }) {
+    final index = trailAttachments.indexWhere((a) => a.id == id);
+    if (index == -1) return;
+    
+    trailAttachments[index] = trailAttachments[index].copyWith(
+      relativeVertices: relativeVertices,
+      style: style,
+      altitudeOffset: altitudeOffset,
+    );
+    
+    // Update the corresponding trail if the point exists
+    final attachment = trailAttachments[index];
+    final pointIndex = points.indexWhere((p) => p.id == attachment.pointId);
+    if (pointIndex != -1) {
+      _updateAttachedTrails(attachment.pointId, points[pointIndex].coordinates);
+    }
+    
+    notifyListeners();
+  }
+
+  /// Gets all trail attachments for a specific point.
+  List<TrailAttachment> getTrailAttachmentsForPoint(String pointId) {
+    return trailAttachments.where((a) => a.pointId == pointId).toList();
   }
 
   /// Disposes the controller.

@@ -1,6 +1,12 @@
 /// The main file of the package. It contains the [FlutterEarthGlobe] widget, which is the main widget of the package.
 library flutter_earth_globe;
 
+export 'globe_coordinates.dart';
+export 'point.dart';
+export 'trail.dart';
+export 'trail_attachment.dart';
+export 'flutter_earth_globe_controller.dart';
+
 import 'globe_coordinates.dart';
 import 'rotating_globe.dart';
 import 'package:flutter/material.dart';
