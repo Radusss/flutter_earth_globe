@@ -53,4 +53,23 @@ class SphereStyle {
       stops: [0.1, 0.85, 1.0],
     ),
   });
+
+  /// Creates a copy of this [SphereStyle] with the given fields replaced with new values.
+  SphereStyle copyWith({
+    Color? shadowColor,
+    BlurStyle? shadowBlurStyle,
+    double? shadowBlurSigma,
+    bool? showShadow,
+    Gradient? gradientOverlay,
+    bool? showGradientOverlay,
+  }) {
+    return SphereStyle(
+      shadowColor: shadowColor ?? this.shadowColor,
+      shadowBlurStyle: shadowBlurStyle ?? this.shadowBlurStyle,
+      shadowBlurSigma: shadowBlurSigma ?? this.shadowBlurSigma,
+      showShadow: showShadow ?? this.showShadow,
+      gradientOverlay: gradientOverlay ?? this.gradientOverlay,
+      showGradientOverlay: showGradientOverlay ?? this.showGradientOverlay,
+    );
+  }
 }

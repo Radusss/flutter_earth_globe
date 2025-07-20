@@ -382,6 +382,53 @@ class FlutterEarthGlobeController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Updates the aura (shadow) intensity of the globe.
+  ///
+  /// The [blurSigma] parameter controls the intensity of the aura effect.
+  /// Higher values create a larger, more diffuse aura.
+  /// 
+  /// Example usage:
+  /// ```dart
+  /// controller.updateAuraIntensity(35.0); // Intensify aura
+  /// controller.updateAuraIntensity(20.0); // Reset to default
+  /// ```
+  void updateAuraIntensity(double blurSigma) {
+    sphereStyle = sphereStyle.copyWith(shadowBlurSigma: blurSigma);
+    notifyListeners();
+  }
+
+  /// Updates the aura (shadow) color of the globe.
+  ///
+  /// The [color] parameter specifies the new aura color.
+  /// 
+  /// Example usage:
+  /// ```dart
+  /// controller.updateAuraColor(Colors.white.withOpacity(0.8));
+  /// ```
+  void updateAuraColor(Color color) {
+    sphereStyle = sphereStyle.copyWith(shadowColor: color);
+    notifyListeners();
+  }
+
+  /// Updates multiple aura properties at once for smooth animations.
+  ///
+  /// Example usage:
+  /// ```dart
+  /// controller.updateAura(
+  ///   blurSigma: 35.0,
+  ///   color: Colors.white.withOpacity(0.9),
+  /// );
+  /// ```
+  void updateAura({double? blurSigma, Color? color}) {
+    print('🎛️ Controller updateAura called: blurSigma=$blurSigma, color=$color'); // Debug
+    sphereStyle = sphereStyle.copyWith(
+      shadowBlurSigma: blurSigma,
+      shadowColor: color,
+    );
+    print('🎛️ New sphereStyle shadowBlurSigma: ${sphereStyle.shadowBlurSigma}'); // Debug
+    notifyListeners();
+  }
+
   /// Starts the rotation of the globe.
   ///
   /// Example usage:
