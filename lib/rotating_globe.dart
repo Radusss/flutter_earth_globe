@@ -302,9 +302,16 @@ class RotatingGlobeState extends State<RotatingGlobe>
           final x0 = (lon + math.pi) * surfaceXRate;
           final y0 = (math.pi / 2 - lat) * surfaceYRate;
 
-          final color = widget.controller.surfaceProcessed![
-              (y0.toInt() * surfaceWidth + x0.toInt()).toInt()];
-          spherePixels[(sphereY + x - minX).toInt()] = color;
+          // Bilinear interpolation for smoother texture sampling
+          final int sampledColor = _bilinearSample(
+            widget.controller.surfaceProcessed!,
+            x0,
+            y0,
+            surfaceWidth.toInt(),
+            surfaceHeight.toInt(),
+          );
+
+          spherePixels[(sphereY + x - minX).toInt()] = sampledColor;
         }
       }
     }
@@ -321,6 +328,76 @@ class RotatingGlobeState extends State<RotatingGlobe>
       completer.complete(sphereImage);
     });
     return completer.future;
+  }
+
+  // === Bilinear sampling helper functions ===
+  /// Linearly interpolate between [a] and [b] by factor [t].
+  static double _lerpInt(int a, int b, double t) => a + (b - a) * t;
+
+  /// Reads a pixel colour from [pixels] at floating-point coordinates ([x], [y])
+  /// using bilinear interpolation. The pixel format is RGBA8888 stored in a
+  /// little-endian `Uint32List` (same layout returned by
+  /// `ImageByteFormat.rawRgba`).
+  static int _bilinearSample(
+    Uint32List pixels,
+    double x,
+    double y,
+    int width,
+    int height,
+  ) {
+    // Clamp coordinates to valid range minus 1 to safely read x+1/y+1.
+    int x0 = x.floor().clamp(0, width - 1);
+    int y0 = y.floor().clamp(0, height - 1);
+
+    int x1 = (x0 + 1 < width) ? x0 + 1 : x0;
+    int y1 = (y0 + 1 < height) ? y0 + 1 : y0;
+
+    double fx = x - x0;
+    double fy = y - y0;
+
+    int c00 = pixels[y0 * width + x0];
+    int c10 = pixels[y0 * width + x1];
+    int c01 = pixels[y1 * width + x0];
+    int c11 = pixels[y1 * width + x1];
+
+    // Extract RGBA components (little-endian RGBA8888)
+    int r00 = c00 & 0xFF;
+    int g00 = (c00 >> 8) & 0xFF;
+    int b00 = (c00 >> 16) & 0xFF;
+    int a00 = (c00 >> 24) & 0xFF;
+
+    int r10 = c10 & 0xFF;
+    int g10 = (c10 >> 8) & 0xFF;
+    int b10 = (c10 >> 16) & 0xFF;
+    int a10 = (c10 >> 24) & 0xFF;
+
+    int r01 = c01 & 0xFF;
+    int g01 = (c01 >> 8) & 0xFF;
+    int b01 = (c01 >> 16) & 0xFF;
+    int a01 = (c01 >> 24) & 0xFF;
+
+    int r11 = c11 & 0xFF;
+    int g11 = (c11 >> 8) & 0xFF;
+    int b11 = (c11 >> 16) & 0xFF;
+    int a11 = (c11 >> 24) & 0xFF;
+
+    // Interpolate horizontally then vertically for each channel
+    double r0 = _lerpInt(r00, r10, fx);
+    double g0 = _lerpInt(g00, g10, fx);
+    double b0 = _lerpInt(b00, b10, fx);
+    double a0 = _lerpInt(a00, a10, fx);
+
+    double r1 = _lerpInt(r01, r11, fx);
+    double g1 = _lerpInt(g01, g11, fx);
+    double b1 = _lerpInt(b01, b11, fx);
+    double a1 = _lerpInt(a01, a11, fx);
+
+    int r = _lerpInt(r0.round(), r1.round(), fy).round();
+    int g = _lerpInt(g0.round(), g1.round(), fy).round();
+    int b = _lerpInt(b0.round(), b1.round(), fy).round();
+    int a = _lerpInt(a0.round(), a1.round(), fy).round();
+
+    return (a << 24) | (b << 16) | (g << 8) | r;
   }
 
   /// Handle tap event
