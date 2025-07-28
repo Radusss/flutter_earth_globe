@@ -479,7 +479,7 @@ class RotatingGlobeState extends State<RotatingGlobe>
                             : 0,
                     rotationY:
                         widget.controller.isBackgroundFollowingSphereRotation
-                            ? rotationY *
+                            ? -rotationX *
                                 radiansToDegrees(widget.radius *
                                     math.pow((2 * math.pi), 2) /
                                     360)

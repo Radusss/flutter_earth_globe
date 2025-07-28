@@ -351,7 +351,8 @@ class FlutterEarthGlobeController extends ChangeNotifier {
     image.resolve(configuration).addListener(ImageStreamListener((info, _) {
       background = info.image;
       backgroundConfiguration = configuration;
-      isBackgroundFollowingSphereRotation = isBackgroundFollowingSphereRotation;
+      // Update the controller field so the rendering layer can use it.
+      this.isBackgroundFollowingSphereRotation = isBackgroundFollowingSphereRotation;
       notifyListeners();
     }));
   }
