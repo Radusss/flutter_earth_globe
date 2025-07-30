@@ -421,12 +421,10 @@ class FlutterEarthGlobeController extends ChangeNotifier {
   /// );
   /// ```
   void updateAura({double? blurSigma, Color? color}) {
-    print('🎛️ Controller updateAura called: blurSigma=$blurSigma, color=$color'); // Debug
     sphereStyle = sphereStyle.copyWith(
       shadowBlurSigma: blurSigma,
       shadowColor: color,
     );
-    print('🎛️ New sphereStyle shadowBlurSigma: ${sphereStyle.shadowBlurSigma}'); // Debug
     notifyListeners();
   }
 
