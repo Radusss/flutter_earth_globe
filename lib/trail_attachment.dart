@@ -49,18 +49,30 @@ class TrailAttachment {
   }
 
   /// Generates absolute trail vertices based on the point's current position.
+  ///
+  /// Uses pole-crossing normalization identical to the point update logic so
+  /// trails remain continuous when crossing +/- 90° latitude. This avoids
+  /// the visual reset where the head appears without a tail after crossing.
   List<GlobeCoordinates> generateAbsoluteVertices(GlobeCoordinates pointPosition) {
     return relativeVertices.map((relative) {
       double newLat = pointPosition.latitude + relative.latitude;
       double newLon = pointPosition.longitude + relative.longitude;
-      
-      // Handle longitude wrapping
-      if (newLon >= 360) newLon -= 360;
-      if (newLon < 0) newLon += 360;
-      
-      // Clamp latitude to valid range
-      newLat = newLat.clamp(-90.0, 90.0);
-      
+
+      // Normalize latitude with pole-crossing logic, adjusting longitude by 180°
+      // each time we reflect over a pole.
+      while (newLat > 90) {
+        newLat = 180 - newLat;
+        newLon += 180;
+      }
+      while (newLat < -90) {
+        newLat = -180 - newLat;
+        newLon += 180;
+      }
+
+      // Wrap longitude into [0, 360)
+      while (newLon >= 360) newLon -= 360;
+      while (newLon < 0) newLon += 360;
+
       return GlobeCoordinates(newLat, newLon);
     }).toList();
   }

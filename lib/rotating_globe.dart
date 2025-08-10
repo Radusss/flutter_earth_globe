@@ -243,7 +243,9 @@ class RotatingGlobeState extends State<RotatingGlobe>
 
   /// Update the state of the sphere
   _update() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    // Batch UI updates; controller now batches notifications for bulk ops
+    setState(() {});
   }
 
   @override
@@ -555,18 +557,40 @@ class RotatingGlobeState extends State<RotatingGlobe>
                         Positioned(
                           top: widget.alignment.y * constraints.maxHeight / 2,
                           left: widget.alignment.x * constraints.maxWidth / 2,
-                          child: FutureBuilder(
-                            key: _futureBuilderKey,
-                            future: buildSphere(
-                                constraints.maxWidth, constraints.maxHeight),
-                            builder: (BuildContext context,
-                                AsyncSnapshot<SphereImage?> snapshot) {
-                              if (snapshot.hasData) {
-                                final data = snapshot.data!;
-                                return CustomPaint(
+                          child: Stack(
+                            children: [
+                              // Sphere layer: isolated in its own RepaintBoundary
+                              RepaintBoundary(
+                                child: FutureBuilder(
+                                  key: _futureBuilderKey,
+                                  future: buildSphere(
+                                      constraints.maxWidth, constraints.maxHeight),
+                                  builder: (BuildContext context,
+                                      AsyncSnapshot<SphereImage?> snapshot) {
+                                    if (snapshot.hasData) {
+                                      final data = snapshot.data!;
+                                      return CustomPaint(
+                                        willChange: true,
+                                        isComplex: true,
+                                        painter: SpherePainter(
+                                          style: widget.controller.sphereStyle,
+                                          sphereImage: data,
+                                        ),
+                                        size: Size(constraints.maxWidth,
+                                            constraints.maxHeight),
+                                      );
+                                    } else {
+                                      return const SizedBox.shrink();
+                                    }
+                                  },
+                                ),
+                              ),
+                              // Foreground layer: points, trails, labels cursor interactions
+                              RepaintBoundary(
+                                child: CustomPaint(
                                   willChange: true,
                                   isComplex: true,
-                                  foregroundPainter: ForegroundPainter(
+                                  painter: ForegroundPainter(
                                     hoverOverConnection: (connectionId,
                                         cartesian2D, isHovering, isVisible) {
                                       if (!mounted) return;
@@ -660,17 +684,11 @@ class RotatingGlobeState extends State<RotatingGlobe>
                                     points: widget.controller.points,
                                     trails: widget.controller.trails,
                                   ),
-                                  painter: SpherePainter(
-                                    style: widget.controller.sphereStyle,
-                                    sphereImage: data,
-                                  ),
                                   size: Size(constraints.maxWidth,
                                       constraints.maxHeight),
-                                );
-                              } else {
-                                return Container();
-                              }
-                            },
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                         if (visiblePoints.isNotEmpty)

@@ -213,9 +213,12 @@ class ForegroundPainter extends CustomPainter {
       for (final trail in trails) {
         if (trail.vertices.length < 2) continue; // need at least 2 points
 
-        // Convert vertices to 2D points, filtering out non-visible ones
-        final List<Offset> visiblePoints = [];
-        
+        // Convert vertices to 2D points, filtering out non-visible ones.
+        // Keep track of the original index so we can preserve head→tail
+        // styling even when the head becomes invisible beyond the horizon.
+        final List<Offset> visiblePoints = <Offset>[];
+        final List<int> visibleIndices = <int>[];
+
         for (int i = 0; i < trail.vertices.length; i++) {
           final coords = trail.vertices[i];
           // Apply altitude similar to points
@@ -240,12 +243,19 @@ class ForegroundPainter extends CustomPainter {
 
           final Offset cart2D = Offset(center.dx + cart3D.y, center.dy - cart3D.z);
           visiblePoints.add(cart2D);
+          visibleIndices.add(i);
         }
 
         if (visiblePoints.length < 2) continue;
 
         if (trail.style.useMagicalEffect) {
-          _drawMagicalTrail(canvas, visiblePoints, trail.style);
+          _drawMagicalTrail(
+            canvas,
+            visiblePoints,
+            trail.style,
+            originalIndices: visibleIndices,
+            totalCount: trail.vertices.length,
+          );
         } else {
           _drawSimpleTrail(canvas, visiblePoints, trail.style);
         }
@@ -311,7 +321,13 @@ class ForegroundPainter extends CustomPainter {
   }
 
   // Helper to draw a magical trail with gradient colors and multiple layers
-  void _drawMagicalTrail(Canvas canvas, List<Offset> points, TrailStyle style) {
+  void _drawMagicalTrail(
+    Canvas canvas,
+    List<Offset> points,
+    TrailStyle style, {
+    required List<int> originalIndices,
+    required int totalCount,
+  }) {
     if (points.length < 2) return;
 
     // Draw multiple trail layers for glow effect
@@ -321,8 +337,10 @@ class ForegroundPainter extends CustomPainter {
 
       // Draw segments between consecutive points
       for (int i = 1; i < points.length; i++) {
-        // Calculate progress through the trail (0.0 = tail, 1.0 = head)
-        final progress = i / (points.length - 1);
+        // Compute progress using the original index along the trail, so that
+        // when the head goes behind the globe it does not stay white at the edge.
+        final int headToTailIndex = originalIndices[i];
+        final double progress = 1.0 - (headToTailIndex / (totalCount - 1));
         
         // Get color for this position
         final segmentColor = style.getColorForProgress(progress);

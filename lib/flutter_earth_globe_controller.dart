@@ -27,6 +27,9 @@ class FlutterEarthGlobeController extends ChangeNotifier {
   bool _isRotating = false; // Whether the globe is rotating.
   bool _isReady = false; // Whether the globe is ready.
   List<Point> points = []; // The points on the globe.
+  // Maps a point's id to its index inside `points` for O(1) lookups/updates.
+  // Kept in sync by add/remove operations.
+  final Map<String, int> idToIndex = <String, int>{};
   List<AnimatedPointConnection> connections =
       []; // The connections between points.
   List<Trail> trails = []; // The trails (poly-lines) on the globe.
@@ -236,6 +239,8 @@ class FlutterEarthGlobeController extends ChangeNotifier {
   /// ```
   void addPoint(Point point) {
     points.add(point);
+    // Update O(1) index map
+    idToIndex[point.id] = points.length - 1;
     notifyListeners();
   }
 
@@ -295,7 +300,25 @@ class FlutterEarthGlobeController extends ChangeNotifier {
   /// controller.removePoint('id');
   /// ```
   void removePoint(String id) {
-    points.removeWhere((element) => element.id == id);
+    // Prefer O(1) map to locate and remove the point, then fix indices
+    final int? removedIndex = idToIndex.remove(id);
+    if (removedIndex != null) {
+      points.removeAt(removedIndex);
+      // Decrement indices for items that shifted left
+      idToIndex.updateAll((key, value) => value > removedIndex ? value - 1 : value);
+    } else {
+      // Fallback for consistency if map wasn't populated
+      final idx = points.indexWhere((p) => p.id == id);
+      if (idx != -1) {
+        points.removeAt(idx);
+        // Rebuild the map to ensure consistency
+        idToIndex
+          ..clear()
+          ..addEntries(points.asMap().entries.map(
+            (e) => MapEntry(e.value.id, e.key),
+          ));
+      }
+    }
     
     // Remove any trail attachments associated with this point
     final attachmentsToRemove = trailAttachments.where((a) => a.pointId == id).map((a) => a.id).toList();
@@ -538,16 +561,41 @@ class FlutterEarthGlobeController extends ChangeNotifier {
   /// );
   /// ```
   void updatePointCoordinates(String id, GlobeCoordinates coordinates) {
-    final index = points.indexWhere((element) => element.id == id);
-    if (index == -1) return; // No point with that id.
+    final int? index = idToIndex[id];
+    if (index == null) return; // No point with that id.
 
     // Replace the Point instance with an updated copy.
     points[index] = points[index].copyWith(coordinates: coordinates);
-    
+
     // Update any trail attachments that follow this point
     _updateAttachedTrails(id, coordinates);
-    
+
     notifyListeners();
+  }
+
+  /// Updates coordinates for multiple points at once and notifies listeners once.
+  ///
+  /// Any ids not found are skipped. Trails attached to affected points are
+  /// also updated accordingly. This greatly reduces rebuild churn when moving
+  /// many points per frame.
+  void updatePointCoordinatesBulk(Map<String, GlobeCoordinates> updates) {
+    if (updates.isEmpty) return;
+
+    bool anyChanged = false;
+    for (final entry in updates.entries) {
+      final String id = entry.key;
+      final GlobeCoordinates coordinates = entry.value;
+      final int? index = idToIndex[id];
+      if (index == null) continue;
+
+      points[index] = points[index].copyWith(coordinates: coordinates);
+      _updateAttachedTrails(id, coordinates);
+      anyChanged = true;
+    }
+
+    if (anyChanged) {
+      notifyListeners();
+    }
   }
 
   /// Updates all trail attachments that follow the specified point.
@@ -627,7 +675,7 @@ class FlutterEarthGlobeController extends ChangeNotifier {
     trailAttachments.add(attachment);
     
     // Find the point to get its current coordinates
-    final pointIndex = points.indexWhere((p) => p.id == attachment.pointId);
+    final pointIndex = idToIndex[attachment.pointId] ?? -1;
     if (pointIndex == -1) {
       // Point doesn't exist yet, trail will be created when point is moved
       return;
