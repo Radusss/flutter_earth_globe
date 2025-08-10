@@ -248,6 +248,9 @@ class RotatingGlobeState extends State<RotatingGlobe>
     setState(() {});
   }
 
+  // No foreground notifier setState hook is needed since the ForegroundPainter
+  // receives a repaint Listenable directly.
+
   @override
   void dispose() {
     widget.controller.removeListener(_update);
@@ -591,6 +594,7 @@ class RotatingGlobeState extends State<RotatingGlobe>
                                   willChange: true,
                                   isComplex: true,
                                   painter: ForegroundPainter(
+                                    repaint: widget.controller.foregroundNotifier,
                                     hoverOverConnection: (connectionId,
                                         cartesian2D, isHovering, isVisible) {
                                       if (!mounted) return;

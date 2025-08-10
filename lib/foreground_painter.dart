@@ -70,7 +70,8 @@ class ForegroundPainter extends CustomPainter {
     this.onPointClicked,
     required this.hoverOverPoint,
     required this.hoverOverConnection,
-  });
+    Listenable? repaint,
+  }) : super(repaint: repaint);
 
   Function(String pointId, Offset? hoverPoint, bool isHovering, bool isVisible)
       hoverOverPoint;
@@ -374,6 +375,9 @@ class ForegroundPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(CustomPainter oldDelegate) {
-    return true;
+    // Repaints driven by the provided Listenable via super(repaint: ...).
+    // Returning false avoids extra invalidations when the painter instance is
+    // unchanged.
+    return false;
   }
 }

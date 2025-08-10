@@ -57,6 +57,12 @@ class FlutterEarthGlobeController extends ChangeNotifier {
 
   GlobalKey<RotatingGlobeState> globeKey = GlobalKey();
 
+  // Layered repaint notifiers to avoid rebuilding the entire widget tree
+  // for foreground-only changes (points/trails). The foreground painter can
+  // listen to this to repaint without triggering a full setState in the
+  // RotatingGlobe widget.
+  final ChangeNotifier foregroundNotifier = ChangeNotifier();
+
   FlutterEarthGlobeController({
     ImageProvider? surface,
     ImageProvider? background,
@@ -241,7 +247,8 @@ class FlutterEarthGlobeController extends ChangeNotifier {
     points.add(point);
     // Update O(1) index map
     idToIndex[point.id] = points.length - 1;
-    notifyListeners();
+    // Foreground-only change: repaint without rebuilding the whole tree
+    foregroundNotifier.notifyListeners();
   }
 
   /// Updates the [point] on the globe.
@@ -288,7 +295,8 @@ class FlutterEarthGlobeController extends ChangeNotifier {
         labelTextStyle: labelTextStyle,
         onTap: onTap,
         onHover: onHover);
-    notifyListeners();
+    // Foreground-only change
+    foregroundNotifier.notifyListeners();
   }
 
   /// Removes the [point] from the globe.
@@ -326,7 +334,8 @@ class FlutterEarthGlobeController extends ChangeNotifier {
       removeTrailAttachment(attachmentId);
     }
     
-    notifyListeners();
+    // Foreground-only change
+    foregroundNotifier.notifyListeners();
   }
 
   /// Loads the [image] as the surface of the globe.
@@ -540,7 +549,9 @@ class FlutterEarthGlobeController extends ChangeNotifier {
     } else {
       this.zoom = zoom;
     }
+    // Zoom affects both sphere and foreground; rebuild + repaint
     notifyListeners();
+    foregroundNotifier.notifyListeners();
   }
 
   /// A callback function that is called when the globe is loaded.
@@ -569,8 +580,8 @@ class FlutterEarthGlobeController extends ChangeNotifier {
 
     // Update any trail attachments that follow this point
     _updateAttachedTrails(id, coordinates);
-
-    notifyListeners();
+    // Foreground-only change
+    foregroundNotifier.notifyListeners();
   }
 
   /// Updates coordinates for multiple points at once and notifies listeners once.
@@ -594,7 +605,8 @@ class FlutterEarthGlobeController extends ChangeNotifier {
     }
 
     if (anyChanged) {
-      notifyListeners();
+      // Foreground-only change
+      foregroundNotifier.notifyListeners();
     }
   }
 
@@ -624,7 +636,8 @@ class FlutterEarthGlobeController extends ChangeNotifier {
   /// Adds a [trail] poly-line to the globe.
   void addTrail(Trail trail) {
     trails.add(trail);
-    notifyListeners();
+    // Foreground-only change
+    foregroundNotifier.notifyListeners();
   }
 
   /// Updates the properties of an existing trail.
@@ -641,13 +654,15 @@ class FlutterEarthGlobeController extends ChangeNotifier {
       style: style,
       altitude: altitude,
     );
-    notifyListeners();
+    // Foreground-only change
+    foregroundNotifier.notifyListeners();
   }
 
   /// Removes the trail with [id].
   void removeTrail(String id) {
     trails.removeWhere((t) => t.id == id);
-    notifyListeners();
+    // Foreground-only change
+    foregroundNotifier.notifyListeners();
   }
 
   /// Attaches a trail to a point. The trail will automatically follow the point's movement.
@@ -696,14 +711,16 @@ class FlutterEarthGlobeController extends ChangeNotifier {
     trails.removeWhere((t) => t.id == attachment.id);
     trails.add(trail);
     
-    notifyListeners();
+    // Foreground-only change
+    foregroundNotifier.notifyListeners();
   }
 
   /// Removes a trail attachment and its associated trail.
   void removeTrailAttachment(String attachmentId) {
     trailAttachments.removeWhere((a) => a.id == attachmentId);
     trails.removeWhere((t) => t.id == attachmentId);
-    notifyListeners();
+    // Foreground-only change
+    foregroundNotifier.notifyListeners();
   }
 
   /// Updates the properties of an existing trail attachment.
@@ -729,7 +746,8 @@ class FlutterEarthGlobeController extends ChangeNotifier {
       _updateAttachedTrails(attachment.pointId, points[pointIndex].coordinates);
     }
     
-    notifyListeners();
+    // Foreground-only change
+    foregroundNotifier.notifyListeners();
   }
 
   /// Gets all trail attachments for a specific point.
@@ -744,6 +762,7 @@ class FlutterEarthGlobeController extends ChangeNotifier {
     onResetGlobeRotation = null;
     onLoaded = null;
     rotationController.dispose();
+    foregroundNotifier.dispose();
     super.dispose();
   }
 }
