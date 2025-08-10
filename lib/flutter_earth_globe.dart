@@ -6,6 +6,7 @@ export 'point.dart';
 export 'trail.dart';
 export 'trail_attachment.dart';
 export 'flutter_earth_globe_controller.dart';
+export 'shader_trail_renderer.dart';
 
 import 'globe_coordinates.dart';
 import 'rotating_globe.dart';

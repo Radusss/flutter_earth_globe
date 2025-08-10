@@ -34,6 +34,10 @@ class FlutterEarthGlobeController extends ChangeNotifier {
       []; // The connections between points.
   List<Trail> trails = []; // The trails (poly-lines) on the globe.
   List<TrailAttachment> trailAttachments = []; // Trail attachments that follow points.
+  // Shader trail attachments rendered via GPU (no vertex list allocation per-frame).
+  List<ShaderTrailAttachment> shaderTrailAttachments = [];
+  // Last-frame projected head 2D position per point for deriving render-direction.
+  final Map<String, Offset> _lastShaderHead2D = <String, Offset>{};
   SphereStyle sphereStyle; // The style of the sphere.
   ui.Image? surface; // The surface image of the sphere.
   ui.Image? background; // The background image of the sphere.
@@ -54,6 +58,10 @@ class FlutterEarthGlobeController extends ChangeNotifier {
   double maxZoom; // The maximum zoom level of the globe.
   double minZoom; // The minimum zoom level of the globe.
   bool isZoomEnabled; // Whether the zoom is enabled.
+
+  /// Feature flag to enable GPU-based trail rendering using a fragment shader.
+  /// When disabled, the CPU path-based trail rendering is used.
+  bool gpuTrailsEnabled = false;
 
   GlobalKey<RotatingGlobeState> globeKey = GlobalKey();
 
@@ -76,10 +84,12 @@ class FlutterEarthGlobeController extends ChangeNotifier {
     this.surfaceConfiguration = const ImageConfiguration(),
     this.backgroundConfiguration = const ImageConfiguration(),
     this.sphereStyle = const SphereStyle(),
+    bool gpuTrailsEnabled = false,
   }) {
     assert(minZoom < maxZoom);
     assert(zoom >= minZoom && zoom <= maxZoom);
     _isRotating = isRotating;
+    this.gpuTrailsEnabled = gpuTrailsEnabled;
     if (surface != null) {
       loadSurface(surface);
     }
@@ -87,6 +97,15 @@ class FlutterEarthGlobeController extends ChangeNotifier {
     if (background != null) {
       loadBackground(background);
     }
+  }
+
+  /// Enables or disables GPU-based trail rendering and notifies listeners.
+  void setGpuTrailsEnabled(bool enabled) {
+    if (gpuTrailsEnabled == enabled) return;
+    gpuTrailsEnabled = enabled;
+    // Foreground rendering path may change; trigger repaint/rebuild.
+    notifyListeners();
+    foregroundNotifier.notifyListeners();
   }
 
   // internal calls
@@ -578,8 +597,10 @@ class FlutterEarthGlobeController extends ChangeNotifier {
     // Replace the Point instance with an updated copy.
     points[index] = points[index].copyWith(coordinates: coordinates);
 
-    // Update any trail attachments that follow this point
-    _updateAttachedTrails(id, coordinates);
+    // Update any CPU trail attachments that follow this point when GPU trails are disabled.
+    if (!gpuTrailsEnabled) {
+      _updateAttachedTrails(id, coordinates);
+    }
     // Foreground-only change
     foregroundNotifier.notifyListeners();
   }
@@ -600,7 +621,9 @@ class FlutterEarthGlobeController extends ChangeNotifier {
       if (index == null) continue;
 
       points[index] = points[index].copyWith(coordinates: coordinates);
-      _updateAttachedTrails(id, coordinates);
+      if (!gpuTrailsEnabled) {
+        _updateAttachedTrails(id, coordinates);
+      }
       anyChanged = true;
     }
 
@@ -719,6 +742,64 @@ class FlutterEarthGlobeController extends ChangeNotifier {
   void removeTrailAttachment(String attachmentId) {
     trailAttachments.removeWhere((a) => a.id == attachmentId);
     trails.removeWhere((t) => t.id == attachmentId);
+    // Foreground-only change
+    foregroundNotifier.notifyListeners();
+  }
+
+  /// Adds or replaces a GPU shader trail attachment.
+  void attachShaderTrail(ShaderTrailAttachment attachment) {
+    shaderTrailAttachments.removeWhere((a) => a.id == attachment.id);
+    shaderTrailAttachments.add(attachment);
+    // Foreground-only change
+    foregroundNotifier.notifyListeners();
+  }
+
+  /// Removes a GPU shader trail attachment by id.
+  void removeShaderTrail(String attachmentId) {
+    shaderTrailAttachments.removeWhere((a) => a.id == attachmentId);
+    // Foreground-only change
+    foregroundNotifier.notifyListeners();
+  }
+
+  /// Returns last known projected head 2D position for a point id.
+  Offset? getLastShaderHead2D(String pointId) => _lastShaderHead2D[pointId];
+
+  /// Updates last known projected head 2D position for a point id.
+  void setLastShaderHead2D(String pointId, Offset position) {
+    _lastShaderHead2D[pointId] = position;
+  }
+
+  /// Updates properties on an existing GPU shader trail attachment.
+  void updateShaderTrail(
+    String id, {
+    List<GlobeCoordinates>? relativeVertices,
+    double? lengthDegrees,
+    double? widthDegrees,
+    List<Color>? gradientStops,
+    Color? tailColor,
+    Color? headColor,
+    Color? glowColor,
+    double? glowStrength,
+    double? shimmer,
+    double? altitudeOffset,
+    double? headWidthMultiplier,
+  }) {
+    final int idx = shaderTrailAttachments.indexWhere((a) => a.id == id);
+    if (idx == -1) return;
+    final ShaderTrailAttachment current = shaderTrailAttachments[idx];
+    shaderTrailAttachments[idx] = current.copyWith(
+      relativeVertices: relativeVertices,
+      lengthDegrees: lengthDegrees,
+      widthDegrees: widthDegrees,
+      gradientStops: gradientStops,
+      tailColor: tailColor,
+      headColor: headColor,
+      glowColor: glowColor,
+      glowStrength: glowStrength,
+      shimmer: shimmer,
+      altitudeOffset: altitudeOffset,
+      headWidthMultiplier: headWidthMultiplier,
+    );
     // Foreground-only change
     foregroundNotifier.notifyListeners();
   }

@@ -1,4 +1,5 @@
 import 'package:flutter_earth_globe/globe_coordinates.dart';
+import 'package:flutter_earth_globe/trail_attachment.dart';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -12,6 +13,7 @@ import 'package:vector_math/vector_math_64.dart' as vector;
 
 import 'misc.dart';
 import 'trail.dart';
+import 'shader_trail_renderer.dart';
 
 /// A custom painter that draws the foreground of the earth globe.
 class ForegroundPainter extends CustomPainter {
@@ -65,6 +67,10 @@ class ForegroundPainter extends CustomPainter {
     required this.zoomFactor,
     required this.points,
     required this.trails,
+    required this.shaderTrailAttachments,
+    required this.gpuTrailsEnabled,
+    required this.getLastHead2D,
+    required this.setLastHead2D,
     this.hoverPoint,
     this.clickPoint,
     this.onPointClicked,
@@ -80,6 +86,7 @@ class ForegroundPainter extends CustomPainter {
   VoidCallback? onPointClicked;
   final List<AnimatedPointConnection> connections;
   final List<Trail> trails;
+  final List<ShaderTrailAttachment> shaderTrailAttachments;
   final Offset? hoverPoint;
   final Offset? clickPoint;
   final double radius;
@@ -88,6 +95,9 @@ class ForegroundPainter extends CustomPainter {
   final double rotationX;
   final double zoomFactor;
   final List<Point> points;
+  final bool gpuTrailsEnabled;
+  final Offset? Function(String pointId) getLastHead2D;
+  final void Function(String pointId, Offset position) setLastHead2D;
 
   bool isSame(GlobeCoordinates c1, GlobeCoordinates c2) {
     return c1.latitude == c2.latitude && c1.longitude == c2.longitude;
@@ -210,7 +220,7 @@ class ForegroundPainter extends CustomPainter {
     }
 
     // --- Draw Trails -------------------------------------------------------
-    if (trails.isNotEmpty) {
+    if (!gpuTrailsEnabled && trails.isNotEmpty) {
       for (final trail in trails) {
         if (trail.vertices.length < 2) continue; // need at least 2 points
 
@@ -260,6 +270,212 @@ class ForegroundPainter extends CustomPainter {
         } else {
           _drawSimpleTrail(canvas, visiblePoints, trail.style);
         }
+      }
+    }
+
+    // --- Draw Shader Trails ------------------------------------------------
+    if (gpuTrailsEnabled && shaderTrailAttachments.isNotEmpty) {
+      final ShaderTrailRenderer renderer = ShaderTrailRenderer.instance;
+      renderer.warmUp();
+      // If shader init previously failed, skip GPU path entirely to avoid stalls
+      if (renderer.isFailed) {
+        // ignore: avoid_print
+        print('[ForegroundPainter] Shader init failed, skipping GPU trails');
+        // Fallback: render nothing here; CPU trails remain available behind flag
+        return;
+      }
+      for (final attachment in shaderTrailAttachments) {
+        // Locate the head point
+        final point = points.firstWhere(
+          (p) => p.id == attachment.pointId,
+          orElse: () => Point(
+            id: '__missing__',
+            coordinates: const GlobeCoordinates(0, 0),
+          ),
+        );
+        if (point.id == '__missing__') continue;
+
+        final double pointRadius = radius + point.altitude + attachment.altitudeOffset;
+        final vector.Vector3 cart3D = getSpherePosition3D(
+          point.coordinates,
+          pointRadius,
+          rotationY,
+          rotationZ,
+        );
+
+        final center = Offset(size.width / 2, size.height / 2);
+        final Offset head2D = Offset(center.dx + cart3D.y, center.dy - cart3D.z);
+
+        // Head visibility (used for fallback straight ribbon); do not early-out,
+        // since curved GPU trails can still be partially visible when head is hidden.
+        bool isFront = cart3D.x > 0;
+        bool isAboveHorizon = false;
+        if (!isFront) {
+          final dx = head2D.dx - center.dx;
+          final dy = head2D.dy - center.dy;
+          final dist = math.sqrt(dx * dx + dy * dy);
+          isAboveHorizon = dist >= radius;
+        }
+
+        // Convert degrees to pixels using radius & zoom factor.
+        // Approx: 1 degree arc length ~ pi*R/180 in pixels.
+        final double pixelsPerDegree = math.pi * pointRadius / 180.0;
+        final double widthPx = attachment.widthDegrees * pixelsPerDegree;
+
+        // Choose colors and multi-stop gradient to mirror CPU magical trail
+        final Color headColor = attachment.headColor;
+        final Color tailColor = (attachment.gradientStops != null && attachment.gradientStops!.isNotEmpty)
+            ? attachment.gradientStops!.first
+            : attachment.tailColor;
+        final List<Color> stops = attachment.gradientStops ?? <Color>[tailColor, headColor];
+
+        // If we have relative vertices, project them and draw a chain of ribbons along the curve.
+        if (attachment.relativeVertices.isNotEmpty) {
+          final List<Offset> projected = <Offset>[];
+          final List<bool> headVisible = <bool>[]; // per-vertex visibility
+          final List<bool> maskOutsideOnlyForVertex = <bool>[]; // per-vertex outside-only mask
+          for (final rel in attachment.relativeVertices) {
+            double newLat = point.coordinates.latitude + rel.latitude;
+            double newLon = point.coordinates.longitude + rel.longitude;
+            // Pole-crossing normalization (parity with CPU TrailAttachment)
+            while (newLat > 90) {
+              newLat = 180 - newLat;
+              newLon += 180;
+            }
+            while (newLat < -90) {
+              newLat = -180 - newLat;
+              newLon += 180;
+            }
+            while (newLon >= 360) newLon -= 360;
+            while (newLon < 0) newLon += 360;
+
+            final vector.Vector3 v3 = getSpherePosition3D(
+              GlobeCoordinates(newLat, newLon),
+              pointRadius,
+              rotationY,
+              rotationZ,
+            );
+            final Offset p2d = Offset(center.dx + v3.y, center.dy - v3.z);
+            projected.add(p2d);
+            bool vFront = v3.x > 0;
+            bool vAbove = false;
+            if (!vFront) {
+              final double ddx = p2d.dx - center.dx;
+              final double ddy = p2d.dy - center.dy;
+              final double dd = math.sqrt(ddx * ddx + ddy * ddy);
+              vAbove = dd >= radius;
+            }
+            headVisible.add(vFront || vAbove);
+            maskOutsideOnlyForVertex.add(!vFront && vAbove);
+          }
+          if (projected.isNotEmpty) {
+            projected[0] = head2D;
+            // Replace visibility for head (index 0) with computed from current head
+            headVisible[0] = (isFront || isAboveHorizon);
+            maskOutsideOnlyForVertex[0] = (!isFront && isAboveHorizon);
+          }
+
+          final double glowPad = widthPx * math.max(attachment.glowStrength, 0.0);
+          final double halfW = widthPx + glowPad;
+
+          for (int i = 1; i < projected.length; i++) {
+            final Offset p0 = projected[i - 1];
+            final Offset p1 = projected[i];
+            // Cull segment if its head endpoint (closer to the actual head, i-1)
+            // is not visible (behind and not above horizon). This removes
+            // segments nearest to the head first.
+            final int headIdx = i - 1;
+            if (headIdx < headVisible.length && headVisible[headIdx] == false) {
+              continue;
+            }
+            final Offset seg = p1 - p0;
+            final double segLen = seg.distance;
+            if (segLen <= 0.5) continue;
+
+            final Offset dir2D = seg / segLen;
+
+            final double minX = math.min(p0.dx, p1.dx) - halfW;
+            final double maxX = math.max(p0.dx, p1.dx) + halfW;
+            final double minY = math.min(p0.dy, p1.dy) - halfW;
+            final double maxY = math.max(p0.dy, p1.dy) + halfW;
+            final Rect bounds = Rect.fromLTRB(minX, minY, maxX, maxY);
+
+            final double t = (i - 1) / (projected.length - 1);
+            final double headMul = 1.0 + (attachment.headWidthMultiplier - 1.0) * t;
+
+            renderer.drawRibbon(
+              canvas: canvas,
+              bounds: bounds,
+              head: p1,
+              direction: dir2D,
+              lengthPx: segLen,
+              widthPx: widthPx,
+              headWidthMultiplier: headMul,
+              headColor: headColor,
+              tailColor: tailColor,
+              colorStops: stops,
+              maskOutsideOnly: (headIdx < maskOutsideOnlyForVertex.length)
+                  ? maskOutsideOnlyForVertex[headIdx]
+                  : (!isFront && isAboveHorizon),
+              glowColor: attachment.glowColor,
+              glowStrength: attachment.glowStrength,
+              shimmer: attachment.shimmer,
+              timeSeconds: 0.0,
+              globeCenter: center,
+              globeRadius: radius,
+              zoom: zoomFactor,
+              rotationY: rotationY,
+              rotationZ: rotationZ,
+            );
+          }
+        } else {
+          // Legacy straight ribbon using last-frame screen-space motion.
+          final Offset? last = getLastHead2D(point.id);
+          Offset dir2D = const Offset(0, -1);
+          if (last != null) {
+            final dx = head2D.dx - last.dx;
+            final dy = head2D.dy - last.dy;
+            final double len = math.sqrt(dx * dx + dy * dy);
+            if (len > 1e-3) {
+              dir2D = Offset(dx / len, dy / len);
+            }
+          }
+          setLastHead2D(point.id, head2D);
+
+          final double lengthPx = attachment.lengthDegrees * pixelsPerDegree;
+          final double glowPad = widthPx * math.max(attachment.glowStrength, 0.0);
+          final double halfW = widthPx + glowPad;
+          final Offset tail = head2D - dir2D * lengthPx;
+          final double minX = math.min(head2D.dx, tail.dx) - halfW;
+          final double maxX = math.max(head2D.dx, tail.dx) + halfW;
+          final double minY = math.min(head2D.dy, tail.dy) - halfW;
+          final double maxY = math.max(head2D.dy, tail.dy) + halfW;
+          final Rect bounds = Rect.fromLTRB(minX, minY, maxX, maxY);
+
+          renderer.drawRibbon(
+            canvas: canvas,
+            bounds: bounds,
+            head: head2D,
+            direction: dir2D,
+            lengthPx: lengthPx,
+            widthPx: widthPx,
+            headWidthMultiplier: attachment.headWidthMultiplier,
+            headColor: headColor,
+            tailColor: tailColor,
+            colorStops: stops,
+            maskOutsideOnly: !isFront && isAboveHorizon,
+            glowColor: attachment.glowColor,
+            glowStrength: attachment.glowStrength,
+            shimmer: attachment.shimmer,
+            timeSeconds: 0.0,
+            globeCenter: center,
+            globeRadius: radius,
+            zoom: zoomFactor,
+            rotationY: rotationY,
+            rotationZ: rotationZ,
+          );
+        }
+        // debug log removed for parity and perf
       }
     }
   }
