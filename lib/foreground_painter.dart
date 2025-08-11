@@ -14,6 +14,7 @@ import 'package:vector_math/vector_math_64.dart' as vector;
 import 'misc.dart';
 import 'trail.dart';
 import 'shader_trail_renderer.dart';
+import 'shader_orb_renderer.dart';
 
 /// A custom painter that draws the foreground of the earth globe.
 class ForegroundPainter extends CustomPainter {
@@ -164,7 +165,30 @@ class ForegroundPainter extends CustomPainter {
           zoomFactor,
           point.style.size,
         );
-        canvas.drawOval(rect, pointPaint);
+        // If this is our special GPU orb, draw the shader effect instead of a flat oval
+        if (point.id == 'red_orb') {
+          final ShaderOrbRenderer orb = ShaderOrbRenderer.instance;
+          orb.warmUp();
+          // Size the orb relative to point size and zoom (tweakable)
+          final double orbSize = point.style.size * 18.0 * (1.0 + 0.2 * zoomFactor);
+          // Use an approximate time based on system clock; the effect is continuous
+          final double t = DateTime.now().millisecondsSinceEpoch / 1000.0;
+          orb.drawOrb(
+            canvas: canvas,
+            center: cartesian2D,
+            sizePx: orbSize,
+            timeSeconds: t,
+          );
+        } else {
+          canvas.drawOval(rect, pointPaint);
+        }
+        if (point.id == 'red_orb') {
+          // Debug: rendering info for orb
+          // ignore: avoid_print
+          print('[ORB] render visible at 2D=' + cartesian2D.toString() +
+              ' front=' + isFrontHemisphere.toString() +
+              ' aboveHorizon=' + isAboveHorizon.toString());
+        }
         // if(rect.contains())
         if (localHover != null && rect.contains(localHover)) {
           Future.delayed(Duration.zero, () {
@@ -191,6 +215,11 @@ class ForegroundPainter extends CustomPainter {
         }
       } else {
         hoverOverPoint(point.id, cartesian2D, false, false);
+        if (point.id == 'red_orb') {
+          // Debug: not visible this frame
+          // ignore: avoid_print
+          print('[ORB] render hidden (behind globe) at 2D=' + cartesian2D.toString());
+        }
       }
     }
     for (var connection in connections) {
