@@ -22,9 +22,9 @@ class ShaderTrailRenderer {
   // [uHead.x, uHead.y, uDir.x, uDir.y, uLength, uWidth, uHeadMul,
   //  uHeadColor.r,g,b,a, uTailColor.r,g,b,a, uGlowColor.r,g,b,a, uGlow,
   //  uStop0.r,g,b,a, uStop1.r,g,b,a, uStop2.r,g,b,a, uStop3.r,g,b,a,
-  //  uStopCount, uMaskOutside, uShimmer, uTime, uCenter.x, uCenter.y,
+  //  uStopCount, uT0, uT1, uMaskOutside, uShimmer, uTime, uCenter.x, uCenter.y,
   //  uRadius, uZoom, uRotationY, uRotationZ]
-  final Float32List _uniforms = Float32List(46);
+  final Float32List _uniforms = Float32List(48);
 
   /// Starts loading the shader program if not already started.
   void warmUp() {
@@ -82,6 +82,8 @@ class ShaderTrailRenderer {
     required Color headColor,
     required Color tailColor,
     required List<Color> colorStops,
+    required double segmentT0,
+    required double segmentT1,
     required bool maskOutsideOnly,
     required Color glowColor,
     required double glowStrength,
@@ -170,6 +172,8 @@ class ShaderTrailRenderer {
     _uniforms[i++] = stop3.opacity;
 
     _uniforms[i++] = stopCount.toDouble(); // uStopCount
+    _uniforms[i++] = segmentT0; // uT0
+    _uniforms[i++] = segmentT1; // uT1
     _uniforms[i++] = maskOutsideOnly ? 1.0 : 0.0; // uMaskOutside
     _uniforms[i++] = shimmer; // uShimmer
 

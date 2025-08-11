@@ -14,7 +14,6 @@ import 'package:vector_math/vector_math_64.dart' as vector;
 import 'misc.dart';
 import 'trail.dart';
 import 'shader_trail_renderer.dart';
-import 'shader_orb_renderer.dart';
 
 /// A custom painter that draws the foreground of the earth globe.
 class ForegroundPainter extends CustomPainter {
@@ -165,23 +164,7 @@ class ForegroundPainter extends CustomPainter {
           zoomFactor,
           point.style.size,
         );
-        // If this is our special GPU orb, draw the shader effect instead of a flat oval
-        if (point.id == 'red_orb') {
-          final ShaderOrbRenderer orb = ShaderOrbRenderer.instance;
-          orb.warmUp();
-          // Size the orb relative to point size and zoom (tweakable)
-          final double orbSize = point.style.size * 18.0 * (1.0 + 0.2 * zoomFactor);
-          // Use an approximate time based on system clock; the effect is continuous
-          final double t = DateTime.now().millisecondsSinceEpoch / 1000.0;
-          orb.drawOrb(
-            canvas: canvas,
-            center: cartesian2D,
-            sizePx: orbSize,
-            timeSeconds: t,
-          );
-        } else {
-          canvas.drawOval(rect, pointPaint);
-        }
+        canvas.drawOval(rect, pointPaint);
         // if(rect.contains())
         if (localHover != null && rect.contains(localHover)) {
           Future.delayed(Duration.zero, () {
@@ -417,20 +400,30 @@ class ForegroundPainter extends CustomPainter {
             final double maxY = math.max(p0.dy, p1.dy) + halfW;
             final Rect bounds = Rect.fromLTRB(minX, minY, maxX, maxY);
 
-            final double t = (i - 1) / (projected.length - 1);
-            final double headMul = 1.0 + (attachment.headWidthMultiplier - 1.0) * t;
+            // Global progress across the whole trail for this segment range
+            // Global progress should be 0 at tail and 1 at head.
+            // Our list goes head(0) -> tail(end), so invert the index mapping.
+            final double t0 = 1.0 - ((i - 1) / (projected.length - 1));
+            final double t1 = 1.0 - (i / (projected.length - 1));
+            // Match CPU: width increases from tail to head
+            // Increase size difference: stronger ease-in to grow more near the head
+            final double eased = t1 * t1 * t1; // cubic
+            final double headMul = 1.0 + (attachment.headWidthMultiplier - 1.0) * eased;
 
             renderer.drawRibbon(
               canvas: canvas,
               bounds: bounds,
-              head: p1,
-              direction: dir2D,
+              // Shader expects head position and direction from tail->head
+              head: p0,
+              direction: -dir2D,
               lengthPx: segLen,
               widthPx: widthPx,
               headWidthMultiplier: headMul,
               headColor: headColor,
               tailColor: tailColor,
               colorStops: stops,
+              segmentT0: t0,
+              segmentT1: t1,
               maskOutsideOnly: (headIdx < maskOutsideOnlyForVertex.length)
                   ? maskOutsideOnlyForVertex[headIdx]
                   : (!isFront && isAboveHorizon),
@@ -473,13 +466,16 @@ class ForegroundPainter extends CustomPainter {
             canvas: canvas,
             bounds: bounds,
             head: head2D,
-            direction: dir2D,
+            // Shader expects tail->head
+            direction: -dir2D,
             lengthPx: lengthPx,
             widthPx: widthPx,
             headWidthMultiplier: attachment.headWidthMultiplier,
             headColor: headColor,
             tailColor: tailColor,
             colorStops: stops,
+            segmentT0: 0.0,
+            segmentT1: 1.0,
             maskOutsideOnly: !isFront && isAboveHorizon,
             glowColor: attachment.glowColor,
             glowStrength: attachment.glowStrength,

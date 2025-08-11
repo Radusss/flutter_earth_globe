@@ -143,15 +143,7 @@ class _HomeState extends State<Home> with TickerProviderStateMixin {
           coordinates: const GlobeCoordinates(0, 0),
           style: const PointStyle(color: Colors.yellow),
           label: 'Center'),
-      // Animated red orb circling around the globe (equatorial orbit)
-      Point(
-        id: 'red_orb',
-        label: 'Orb',
-        coordinates: const GlobeCoordinates(10, 0),
-        // Slightly above the surface so it appears to orbit
-        altitude: 12,
-        style: const PointStyle(color: Colors.red, size: 8),
-      ),
+      // Removed special animated orb point
     ];
     connections = [
       PointConnection(
@@ -204,20 +196,7 @@ class _HomeState extends State<Home> with TickerProviderStateMixin {
       _controller.addPoint(point);
     }
 
-    // Animate the orb longitude to circle around the sphere
-    _orbController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 12),
-    )
-      ..addListener(() {
-        // Map 0..1 -> 0..360 degrees longitude
-        final double lon = (_orbController.value * 360.0) % 360.0;
-        // Debug: log orbit update
-        // ignore: avoid_print
-        print('[ORB] updating longitude: ' + lon.toStringAsFixed(2));
-        _controller.updatePointCoordinates('red_orb', GlobeCoordinates(10, lon));
-      })
-      ..repeat();
+    // Removed orb animation controller
 
     super.initState();
   }
