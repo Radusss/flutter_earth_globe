@@ -182,13 +182,6 @@ class ForegroundPainter extends CustomPainter {
         } else {
           canvas.drawOval(rect, pointPaint);
         }
-        if (point.id == 'red_orb') {
-          // Debug: rendering info for orb
-          // ignore: avoid_print
-          print('[ORB] render visible at 2D=' + cartesian2D.toString() +
-              ' front=' + isFrontHemisphere.toString() +
-              ' aboveHorizon=' + isAboveHorizon.toString());
-        }
         // if(rect.contains())
         if (localHover != null && rect.contains(localHover)) {
           Future.delayed(Duration.zero, () {
@@ -215,11 +208,6 @@ class ForegroundPainter extends CustomPainter {
         }
       } else {
         hoverOverPoint(point.id, cartesian2D, false, false);
-        if (point.id == 'red_orb') {
-          // Debug: not visible this frame
-          // ignore: avoid_print
-          print('[ORB] render hidden (behind globe) at 2D=' + cartesian2D.toString());
-        }
       }
     }
     for (var connection in connections) {
