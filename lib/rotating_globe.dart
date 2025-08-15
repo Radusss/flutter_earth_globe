@@ -150,11 +150,14 @@ class RotatingGlobeState extends State<RotatingGlobe>
     _decelerationController = AnimationController(
       vsync: this,
       duration: const Duration(
-          milliseconds: 1000), // Adjust duration for smoother effect
+          milliseconds: 1800), // Longer duration for smoother braking
     )..addListener(() {
         if (mounted) {
           // Decelerate rotation based on animation value
-          double decelerationFactor = (1 - _decelerationController.value);
+          final double t = _decelerationController.value;
+          // Ease-out curve to create a smoother, longer tail
+          final double decelerationFactor = 1 -
+              Curves.easeOutQuint.transform(t);
           rotationX += _angularVelocityX * decelerationFactor;
           rotationY += _angularVelocityY * decelerationFactor;
           rotationZ += _angularVelocityZ * decelerationFactor;
@@ -507,6 +510,11 @@ class RotatingGlobeState extends State<RotatingGlobe>
               _lastRotationZ = rotationZ;
               _lastRotationY = rotationY;
               _lastFocalPoint = details.focalPoint;
+
+              // Stop any ongoing deceleration when a new interaction begins
+              if (_decelerationController.isAnimating) {
+                _decelerationController.stop();
+              }
 
               if (widget.controller.isRotating) {
                 widget.controller.rotationController.stop();
