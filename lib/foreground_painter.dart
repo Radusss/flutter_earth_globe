@@ -390,9 +390,13 @@ class ForegroundPainter extends CustomPainter {
             }
             final Offset seg = p1 - p0;
             final double segLen = seg.distance;
-            if (segLen <= 0.5) continue;
 
-            final Offset dir2D = seg / segLen;
+            // When the motion is almost purely toward or away from the camera,
+            // the projected 2D length can approach zero. Instead of skipping,
+            // render a minimal capsule (dot-like) so the whisper remains visible.
+            final double minLenPx = math.max(1.0, widthPx);
+            final double ribbonLen = segLen < minLenPx ? minLenPx : segLen;
+            final Offset dir2D = segLen > 1e-3 ? (seg / segLen) : const Offset(0, -1);
 
             final double minX = math.min(p0.dx, p1.dx) - halfW;
             final double maxX = math.max(p0.dx, p1.dx) + halfW;
@@ -416,7 +420,7 @@ class ForegroundPainter extends CustomPainter {
               // Shader expects head position and direction from tail->head
               head: p0,
               direction: -dir2D,
-              lengthPx: segLen,
+              lengthPx: ribbonLen,
               widthPx: widthPx,
               headWidthMultiplier: headMul,
               headColor: headColor,
