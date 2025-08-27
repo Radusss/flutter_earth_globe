@@ -105,8 +105,19 @@ class ShaderTrailRenderer {
 
     // Normalize direction; avoid NaNs
     final double dirLen = direction.distance;
-    final double dirX = dirLen > 1e-6 ? direction.dx / dirLen : 0.0;
-    final double dirY = dirLen > 1e-6 ? direction.dy / dirLen : -1.0;
+    double dirX = dirLen > 1e-6 ? direction.dx / dirLen : 0.0;
+    double dirY = dirLen > 1e-6 ? direction.dy / dirLen : -1.0;
+
+    // Platform parity fix: on iOS the vertical drag/sign for GPU ribbons
+    // renders inverted compared to CPU paths/sphere rotation. Flip Y only
+    // for iOS to match Android and CPU rendering.
+    try {
+      if (defaultTargetPlatform == TargetPlatform.iOS) {
+        dirY = -dirY;
+      }
+    } catch (_) {
+      // defaultTargetPlatform may not be available in some contexts; ignore
+    }
 
     // Pack uniforms in declared order
     int i = 0;
