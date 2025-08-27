@@ -532,14 +532,18 @@ class RotatingGlobeState extends State<RotatingGlobe>
                   _lastRotationX + offset.dy / convertedRadius());
               rotationZ = adjustModRotation(
                   _lastRotationZ - offset.dx / convertedRadius());
+              // On iOS, invert Y sign for foreground rotation to match sphere roll
+              final bool _isIOS = defaultTargetPlatform == TargetPlatform.iOS;
               rotationY = adjustModRotation(
-                  _lastRotationY + offset.dy / convertedRadius());
+                  _lastRotationY + (_isIOS ? -offset.dy : offset.dy) / convertedRadius());
               setState(() {});
             },
             onInteractionEnd: (ScaleEndDetails details) {
               final offset = details.velocity.pixelsPerSecond / 50;
               _angularVelocityX = offset.dy / convertedRadius();
-              _angularVelocityY = offset.dy / convertedRadius();
+              // Match sign with above platform-conditional rotationY update
+              final bool _isIOS = defaultTargetPlatform == TargetPlatform.iOS;
+              _angularVelocityY = (_isIOS ? -offset.dy : offset.dy) / convertedRadius();
               _angularVelocityZ = -offset.dx / convertedRadius();
               _decelerationController.forward(from: 0.0);
 
