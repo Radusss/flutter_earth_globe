@@ -33,6 +33,23 @@ class ShaderTrailRenderer {
     _initFuture ??= _load();
   }
 
+  /// Ensures the shader program is initialized and returns whether it is ready.
+  ///
+  /// This awaits any in-flight initialization to complete and reports success
+  /// or failure via the returned boolean. If initialization fails, the internal
+  /// failure flag is left set so callers can avoid re-attempting GPU paths.
+  Future<bool> ensureInitialized() async {
+    if (_initFuture == null) {
+      warmUp();
+    }
+    try {
+      await _initFuture;
+    } catch (_) {
+      // Swallow and rely on _failed flag below
+    }
+    return _shader != null && !_failed;
+  }
+
   Future<void> _load() async {
     try {
       // Try package-qualified asset key first (required when used from an app)
@@ -215,6 +232,8 @@ class ShaderTrailRenderer {
     } catch (e) {
       // ignore: avoid_print
       print('[ShaderTrailRenderer] drawRect failed: $e');
+      // Mark as failed so callers can auto-fallback to CPU rendering.
+      _failed = true;
     }
   }
 }
