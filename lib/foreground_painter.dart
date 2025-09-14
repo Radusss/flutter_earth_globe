@@ -156,6 +156,24 @@ class ForegroundPainter extends CustomPainter {
       }
 
       if (isFrontHemisphere || isAboveHorizon) {
+        // Optional additive glow rendered behind the core dot
+        if (point.style.glowSigma > 0) {
+          final Rect glowRect = getRectOnSphere(
+            cartesian3D,
+            cartesian2D,
+            center,
+            pointRadius,
+            zoomFactor,
+            point.style.size * point.style.glowScale,
+          );
+          final Paint glowPaint = Paint()
+            ..color = point.style.color
+            ..blendMode = BlendMode.plus
+            ..isAntiAlias = true
+            ..maskFilter = ui.MaskFilter.blur(ui.BlurStyle.normal, point.style.glowSigma);
+          canvas.drawOval(glowRect, glowPaint);
+        }
+
         final rect = getRectOnSphere(
           cartesian3D,
           cartesian2D,
@@ -164,7 +182,9 @@ class ForegroundPainter extends CustomPainter {
           zoomFactor,
           point.style.size,
         );
-        canvas.drawOval(rect, pointPaint);
+        if (!point.style.glowOnly) {
+          canvas.drawOval(rect, pointPaint);
+        }
         // if(rect.contains())
         if (localHover != null && rect.contains(localHover)) {
           Future.delayed(Duration.zero, () {

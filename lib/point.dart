@@ -142,6 +142,21 @@ class PointStyle {
   /// The color of the point.
   final Color color;
 
+  /// Optional Gaussian blur sigma for a soft glow around the point.
+  ///
+  /// When greater than 0, a blurred ellipse is drawn using [color] with
+  /// [BlendMode.plus] before the solid point. This creates an additive glow
+  /// that looks more natural than stacking opaque circles.
+  final double glowSigma;
+
+  /// Scale factor applied to [size] when drawing the glow ellipse.
+  ///
+  /// Values > 1 draw the glow larger than the core point.
+  final double glowScale;
+
+  /// If true, draws only the glow and skips the solid core dot.
+  final bool glowOnly;
+
   /// Creates a new instance of the [PointStyle] class.
   ///
   /// The [size] parameter is the size of the point.
@@ -157,21 +172,27 @@ class PointStyle {
   /// color: Colors.white,
   /// );
   /// ```
-  const PointStyle({this.size = 4, this.color = Colors.white});
+  const PointStyle({this.size = 4, this.color = Colors.white, this.glowSigma = 0.0, this.glowScale = 2.0, this.glowOnly = false});
 
   /// Converts the [PointStyle] object to a map.
   Map<String, dynamic> toMap() {
     return <String, dynamic>{
       'size': size,
       'color': color.value,
+      'glowSigma': glowSigma,
+      'glowScale': glowScale,
+      'glowOnly': glowOnly,
     };
   }
 
   /// Creates a [PointStyle] object from a map.
   factory PointStyle.fromMap(Map<String, dynamic> map) {
     return PointStyle(
-      size: map['size'] as double,
+      size: (map['size'] as num).toDouble(),
       color: Color(map['color'] as int),
+      glowSigma: (map['glowSigma'] as num?)?.toDouble() ?? 0.0,
+      glowScale: (map['glowScale'] as num?)?.toDouble() ?? 2.0,
+      glowOnly: map['glowOnly'] as bool? ?? false,
     );
   }
 
@@ -186,10 +207,16 @@ class PointStyle {
   PointStyle copyWith({
     double? size,
     Color? color,
+    double? glowSigma,
+    double? glowScale,
+    bool? glowOnly,
   }) {
     return PointStyle(
       size: size ?? this.size,
       color: color ?? this.color,
+      glowSigma: glowSigma ?? this.glowSigma,
+      glowScale: glowScale ?? this.glowScale,
+      glowOnly: glowOnly ?? this.glowOnly,
     );
   }
 }
