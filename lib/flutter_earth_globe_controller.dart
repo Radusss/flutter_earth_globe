@@ -218,7 +218,9 @@ class FlutterEarthGlobeController extends ChangeNotifier {
     VoidCallback? onTap,
     VoidCallback? onHover,
   }) {
-    connections.firstWhere((element) => element.id == id).copyWith(
+    final index = connections.indexWhere((element) => element.id == id);
+    if (index == -1) return;
+    connections[index] = connections[index].copyWith(
         label: label,
         isMoving: isMoving,
         labelBuilder: labelBuilder,
@@ -227,7 +229,7 @@ class FlutterEarthGlobeController extends ChangeNotifier {
         style: style,
         labelTextStyle: labelTextStyle,
         onTap: onTap,
-        onHover: onHover);
+        onHover: onHover) as AnimatedPointConnection;
     notifyListeners();
   }
 
@@ -305,7 +307,10 @@ class FlutterEarthGlobeController extends ChangeNotifier {
     VoidCallback? onTap,
     VoidCallback? onHover,
   }) {
-    points.firstWhere((element) => element.id == id).copyWith(
+    final int? index = idToIndex[id];
+    if (index == null) return;
+
+    points[index] = points[index].copyWith(
         label: label,
         labelBuilder: labelBuilder,
         isLabelVisible: isLabelVisible,
