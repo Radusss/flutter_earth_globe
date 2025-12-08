@@ -1,5 +1,5 @@
 /// The main file of the package. It contains the [FlutterEarthGlobe] widget, which is the main widget of the package.
-library flutter_earth_globe;
+library;
 
 export 'globe_coordinates.dart';
 export 'point.dart';
@@ -13,6 +13,13 @@ import 'rotating_globe.dart';
 import 'package:flutter/material.dart';
 
 import 'flutter_earth_globe_controller.dart';
+
+// Export the DayNightCycleDirection enum for external use
+export 'misc.dart' show DayNightCycleDirection;
+
+// Export satellite classes for external use
+export 'satellite.dart'
+    show Satellite, SatelliteStyle, SatelliteOrbit, SatelliteShape;
 
 /// This is the main widget of the package. It is a sphere that can be rotated and animated.
 class FlutterEarthGlobe extends StatefulWidget {
@@ -48,20 +55,21 @@ class FlutterEarthGlobe extends StatefulWidget {
   /// )
   /// ```
   const FlutterEarthGlobe({
-    Key? key,
+    super.key,
     required this.radius,
     required this.controller,
     this.alignment = Alignment.center,
     this.onZoomChanged,
     this.onHover,
     this.onTap,
-  }) : super(key: key);
+  });
 
   @override
-  _FlutterEarthGlobeState createState() => _FlutterEarthGlobeState();
+  FlutterEarthGlobeState createState() => FlutterEarthGlobeState();
 }
 
-class _FlutterEarthGlobeState extends State<FlutterEarthGlobe> {
+/// State for the [FlutterEarthGlobe] widget.
+class FlutterEarthGlobeState extends State<FlutterEarthGlobe> {
   @override
   Widget build(BuildContext context) {
     return RotatingGlobe(
