@@ -22,6 +22,7 @@ import 'sphere_painter.dart';
 import 'package:flutter/material.dart';
 
 import 'starry_background_painter.dart';
+import 'shader_trail_renderer.dart';
 
 /// The [RotatingGlobe] widget represents a sphere in a rotating globe.
 ///
@@ -246,9 +247,12 @@ class RotatingGlobeState extends State<RotatingGlobe>
             }
           }
 
+          // Check if there are any shader trails (whispers) which need continuous animation
+          bool hasShaderTrails = widget.controller.shaderTrailAttachments.isNotEmpty;
+
           // Trigger foreground repaint for animations
           // Use modulo to prevent integer overflow after long runtime
-          if (hasAnimatingConnections || hasOrbitingSatellites) {
+          if (hasAnimatingConnections || hasOrbitingSatellites || hasShaderTrails) {
             _animationNotifier.value = (_animationNotifier.value + 1) % 1000000;
           }
         }
@@ -262,7 +266,7 @@ class RotatingGlobeState extends State<RotatingGlobe>
     _decelerationController = AnimationController(
       vsync: this,
       duration: const Duration(
-          milliseconds: 1200), // Longer for smoother deceleration
+          milliseconds: 1800), // Longer for smoother deceleration
     )..addListener(() {
         if (mounted) {
           // Use easeOutQuint for smoother, more natural deceleration like globe.gl
@@ -1394,13 +1398,18 @@ class RotatingGlobeState extends State<RotatingGlobe>
       arcs: _arcRenderData,
       satellites: _satelliteRenderData,
       trails: _trailRenderData,
+      shaderTrails: widget.controller.shaderTrailAttachments,
       radius: convertedRadius(),
       center: center,
       hoverPoint: _hoverNotifier.value,
       clickPoint: _clickNotifier.value,
+      rotationY: rotationY,
+      rotationZ: rotationZ,
       skipSatelliteShapes: skipSatelliteShapes,
       previousHoveredPointId: _currentHoveredPointId,
       previousHoveredConnectionId: _currentHoveredConnectionId,
+      getLastHead2D: widget.controller.getLastShaderHead2D,
+      setLastHead2D: widget.controller.setLastShaderHead2D,
       onPointHover: (pointId, position, isHovering, isVisible) {
         if (!mounted) return;
 
@@ -1454,11 +1463,11 @@ class RotatingGlobeState extends State<RotatingGlobe>
     if (background == null) return const SizedBox.shrink();
 
     final offsetX = widget.controller.isBackgroundFollowingSphereRotation
-        ? rotationZ *
+        ? -rotationZ *
             radiansToDegrees(widget.radius * math.pow((2 * math.pi), 2) / 360)
         : 0.0;
     final offsetY = widget.controller.isBackgroundFollowingSphereRotation
-        ? rotationY *
+        ? rotationX *
             radiansToDegrees(widget.radius * math.pow((2 * math.pi), 2) / 360)
         : 0.0;
 
@@ -1557,13 +1566,23 @@ class RotatingGlobeState extends State<RotatingGlobe>
 
   /// Build the atmospheric glow widget that wraps around the globe
   Widget _buildAtmosphericGlow(BoxConstraints constraints, Widget child) {
-    if (!widget.controller.showAtmosphere) {
+    if (!widget.controller.showAtmosphere && !widget.controller.sphereStyle.showShadow) {
       return child;
     }
 
-    final glowColor = widget.controller.atmosphereColor;
-    final glowBlur = widget.controller.atmosphereBlur;
-    final glowOpacity = widget.controller.atmosphereOpacity;
+    Color glowColor = widget.controller.atmosphereColor;
+    double glowBlur = widget.controller.atmosphereBlur;
+    double glowOpacity = widget.controller.atmosphereOpacity;
+    // Use sphere style shadow opacity if available/stronger
+    if (widget.controller.sphereStyle.showShadow) {
+      final shadowColor = widget.controller.sphereStyle.shadowColor;
+      if (shadowColor.opacity > glowOpacity) {
+        glowColor = shadowColor;
+        glowOpacity = shadowColor.opacity;
+        glowBlur = widget.controller.sphereStyle.shadowBlurSigma;
+      }
+    }
+
     final glowThickness = widget.controller.atmosphereThickness;
     final radius = convertedRadius();
 
@@ -1811,8 +1830,11 @@ class RotatingGlobeState extends State<RotatingGlobe>
                     (offset.dy / convertedRadius()) * panFactor);
                 rotationZ = adjustModRotation(_lastRotationZ -
                     (offset.dx / convertedRadius()) * panFactor);
-                rotationY = adjustModRotation(_lastRotationY -
-                    (offset.dy / convertedRadius()) * panFactor);
+                // On iOS, invert Y sign for foreground rotation to match sphere roll
+                final bool isIOS = defaultTargetPlatform == TargetPlatform.iOS;
+                rotationY = adjustModRotation(_lastRotationY +
+                    ((isIOS ? -offset.dy : offset.dy) / convertedRadius()) *
+                        panFactor);
                 setState(() {});
               },
               onInteractionEnd: (ScaleEndDetails details) {
@@ -1831,8 +1853,10 @@ class RotatingGlobeState extends State<RotatingGlobe>
                   final panFactor = _panSensitivity;
                   _angularVelocityX =
                       (velocity.dy / convertedRadius()) * panFactor;
-                  _angularVelocityY =
-                      (-velocity.dy / convertedRadius()) * panFactor;
+                  final bool isIOS = defaultTargetPlatform == TargetPlatform.iOS;
+                  _angularVelocityY = ((isIOS ? -velocity.dy : velocity.dy) /
+                          convertedRadius()) *
+                      panFactor;
                   _angularVelocityZ =
                       (-velocity.dx / convertedRadius()) * panFactor;
 

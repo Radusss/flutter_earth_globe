@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter_earth_globe/shader_trail_renderer.dart';
+import 'package:vector_math/vector_math_64.dart' hide Colors;
 
 import 'globe_coordinates.dart';
 import 'line_helper.dart';
@@ -189,9 +191,11 @@ class GlobeForegroundRenderer {
           duration > 0 ? (elapsed / duration).clamp(0.0, 1.0) : 1.0;
 
       // Calculate 3D position
+      // Apply altitude to the point position
+      final pointRadius = radius + point.altitude;
       final cartesian3D = getSpherePosition3D(
         point.coordinates,
-        radius,
+        pointRadius,
         rotationY,
         rotationZ,
       );
@@ -206,13 +210,13 @@ class GlobeForegroundRenderer {
       final isVisible = cartesian3D.x > 0;
 
       // Depth calculation for scaling (normalized 0-1)
-      final depth = isVisible ? (cartesian3D.x / radius).clamp(0.0, 1.0) : 0.0;
+      final depth = isVisible ? (cartesian3D.x / pointRadius).clamp(0.0, 1.0) : 0.0;
 
       // Calculate surface normal (normalized cartesian3D is the surface normal)
       // This gives us the direction the surface is facing
-      final normalX = cartesian3D.x / radius; // Towards camera
-      final normalY = cartesian3D.y / radius; // Horizontal
-      final normalZ = cartesian3D.z / radius; // Vertical
+      final normalX = cartesian3D.x / pointRadius; // Towards camera
+      final normalY = cartesian3D.y / pointRadius; // Horizontal
+      final normalZ = cartesian3D.z / pointRadius; // Vertical
 
       // Tilt angle: angle between surface normal and camera direction (1,0,0)
       // cos(angle) = dot(normal, cameraDir) = normalX
@@ -310,7 +314,7 @@ class GlobeForegroundRenderer {
       // altitude = geoDistance / 2 * altAutoScale (default 0.5)
       final centralAngle =
           calculateCentralAngle(connection.start, connection.end);
-      final geoDistance = centralAngle; // In radians, proportional to distance
+      final geoDistance = centralAngle; // In degreesToRadians, proportional to distance
 
       // Globe.GL default: altitude = distance/2 * 0.5 = distance/4
       // Scaled by curveScale for user control
@@ -648,10 +652,13 @@ class GpuForegroundPainter extends CustomPainter {
   final List<ArcRenderData> arcs;
   final List<SatelliteRenderData> satellites;
   final List<TrailRenderData> trails;
+  final List<ShaderTrailAttachment> shaderTrails;
   final double radius;
   final Offset center;
   final Offset? hoverPoint;
   final Offset? clickPoint;
+  final double rotationY;
+  final double rotationZ;
 
   // Whether to skip satellite shape drawing (when using GPU shader for satellites)
   // Orbit paths and labels will still be drawn via Canvas
@@ -672,15 +679,22 @@ class GpuForegroundPainter extends CustomPainter {
   final String? previousHoveredConnectionId;
   final String? previousHoveredSatelliteId;
 
+  // Helper to get the last head position for shader trails
+  final Offset? Function(String pointId)? getLastHead2D;
+  final void Function(String pointId, Offset position)? setLastHead2D;
+
   GpuForegroundPainter({
     required this.points,
     required this.arcs,
     required this.satellites,
     this.trails = const [],
+    this.shaderTrails = const [],
     required this.radius,
     required this.center,
     this.hoverPoint,
     this.clickPoint,
+    this.rotationY = 0.0,
+    this.rotationZ = 0.0,
     this.skipSatelliteShapes = false,
     this.onPointHover,
     this.onConnectionHover,
@@ -689,6 +703,8 @@ class GpuForegroundPainter extends CustomPainter {
     this.previousHoveredPointId,
     this.previousHoveredConnectionId,
     this.previousHoveredSatelliteId,
+    this.getLastHead2D,
+    this.setLastHead2D,
   });
 
   @override
@@ -696,6 +712,13 @@ class GpuForegroundPainter extends CustomPainter {
     String? currentHoveredPointId;
     String? currentHoveredConnectionId;
     bool clickHandled = false;
+
+    // Draw shader trails (GPU accelerated)
+    if (shaderTrails.isNotEmpty) {
+      for (final attachment in shaderTrails) {
+        _drawShaderTrail(canvas, attachment, size);
+      }
+    }
 
     // Draw trails first (lowest layer)
     for (final trail in trails) {
@@ -875,6 +898,262 @@ class GpuForegroundPainter extends CustomPainter {
         clickHandled = true;
       }
     }
+  }
+
+  void _drawShaderTrail(
+      Canvas canvas, ShaderTrailAttachment attachment, Size size) {
+    // Find the point this trail is attached to
+    final pointData = points
+        .where((p) => p.id == attachment.pointId)
+        .firstOrNull; // O(N) lookup per trail, acceptable for small counts
+
+    if (pointData == null) return;
+
+    // Check if we have relative vertices to define the trail shape (curved trail)
+    if (attachment.relativeVertices.isNotEmpty) {
+      _drawCurvedShaderTrail(canvas, attachment, pointData, size);
+      return;
+    }
+
+    // Calculate head position
+    // For shader trails, we want the 2D position on screen
+    final head = pointData.position2D;
+
+    // Calculate direction for trail
+    // If we have a previous position, use that to determine direction
+    Offset direction = const Offset(0, 1); // Default down
+    final lastHead = getLastHead2D?.call(attachment.pointId);
+
+    if (lastHead != null) {
+      final diff = lastHead - head;
+      if (diff.distance > 0.1) {
+        direction = diff;
+      }
+    }
+
+    // Update last head position for next frame
+    // We do this during paint which is suboptimal but convenient
+    // Better to do in the calculation phase
+    setLastHead2D?.call(attachment.pointId, head);
+
+    // Calculate trail properties
+    // Use proper spherical scaling
+    // width in pixels = radius * width_in_radians
+    // Ensure minimum width for visibility
+    final widthPx = math.max(
+      radius * degreesToRadians(attachment.widthDegrees),
+      1.5,
+    );
+    final lengthPx = radius * degreesToRadians(attachment.lengthDegrees);
+
+    // Draw using the shader renderer
+    // Calculate a bounding box for the trail (rough estimate)
+    final bounds = Rect.fromCenter(
+      center: head + direction * 0.5, // Offset slightly
+      width: math.max(lengthPx, widthPx) * 4,
+      height: math.max(lengthPx, widthPx) * 4,
+    );
+
+    // Calculate visibility for masking
+    // A trail attached to a point behind the globe should be masked if it's not "high" enough
+    // to peek over the horizon.
+    // However, the shader handles the actual masking logic based on the maskOutsideOnly flag.
+    // If maskOutsideOnly is true, the shader only draws parts of the trail that are OUTSIDE the globe circle.
+    // This is useful for trails coming from behind the globe - we want to see the part sticking out,
+    // but not the part that should be occluded by the sphere.
+    
+    // Check if the attachment point is on the front hemisphere
+    final isFront = pointData.isVisible; // isVisible is true if x > 0 (front hemisphere)
+    
+    // Check if the point is "above horizon" (radially outside the globe disk)
+    final distFromCenter = (head - center).distance;
+    final isAboveHorizon = distFromCenter > radius;
+    
+    // We should mask if the point is BEHIND the globe (not front).
+    // If it's behind, we set maskOutsideOnly = true, which means "only draw the part outside the globe circle".
+    // This correctly handles:
+    // 1. Behind and inside (hidden) -> Masked out completely (since it's inside)
+    // 2. Behind and sticking out (altitude) -> Masked inside, drawn outside (visible)
+    final maskOutsideOnly = !isFront;
+
+    ShaderTrailRenderer.instance.drawRibbon(
+      canvas: canvas,
+      bounds: bounds,
+      head: head,
+      direction: direction,
+      lengthPx: lengthPx,
+      widthPx: widthPx,
+      headWidthMultiplier: attachment.headWidthMultiplier,
+      headColor: attachment.headColor,
+      tailColor: attachment.tailColor,
+      colorStops: attachment.gradientStops ?? [],
+      segmentT0: 1.0, // Head (T=1)
+      segmentT1: 0.0, // Tail (T=0) - Reversed from legacy to match color order
+      maskOutsideOnly: maskOutsideOnly,
+      glowColor: attachment.glowColor,
+      glowStrength: attachment.glowStrength,
+      shimmer: attachment.shimmer,
+      timeSeconds: DateTime.now().millisecondsSinceEpoch / 1000.0,
+      globeCenter: center,
+      globeRadius: radius,
+      zoom: 1.0, // Zoom already baked into radius/coordinates
+      rotationY: rotationY,
+      rotationZ: rotationZ,
+    );
+  }
+
+  void _drawCurvedShaderTrail(
+    Canvas canvas,
+    ShaderTrailAttachment attachment,
+    PointRenderData pointData,
+    Size size,
+  ) {
+    // 1. Generate absolute coordinates for the trail
+    // Use the logic from TrailAttachment to handle pole crossing
+    final headCoord = pointData.point.coordinates;
+    final vertices = _generateAbsoluteVertices(headCoord, attachment.relativeVertices);
+    
+    // Prepend the head coordinate so the trail starts exactly at the point
+    vertices.insert(0, headCoord);
+
+    if (vertices.length < 2) return;
+
+    // 2. Calculate visibility and projection for all vertices
+    final points3D = <Vector3>[];
+    final points2D = <Offset>[];
+    final isVisible = <bool>[];
+
+    // The trail altitude is additive to the point altitude
+    // point.altitude is absolute units (e.g. 10.0)
+    // attachment.altitudeOffset is usually relative to radius? Or normalized?
+    // Based on previous code radius * (1.0 + offset) implies offset is normalized.
+    final trailRadius = radius + pointData.point.altitude + (radius * attachment.altitudeOffset);
+
+    for (final vertex in vertices) {
+      final vec = getSpherePosition3D(vertex, trailRadius, rotationY, rotationZ);
+      points3D.add(vec);
+      points2D.add(Offset(center.dx + vec.y, center.dy - vec.z));
+      
+      // Visibility check (same as standard trails)
+      final projectedDist = math.sqrt(vec.y * vec.y + vec.z * vec.z);
+      final isAboveSilhouette = projectedDist > radius && attachment.altitudeOffset > 0;
+      final horizonThreshold = -attachment.altitudeOffset * radius * 0.3;
+      isVisible.add(vec.x > horizonThreshold || isAboveSilhouette);
+    }
+
+    // 3. Draw segments
+    final segmentCount = vertices.length - 1;
+    // Width scales with zoom (radius is zoomed), but ensure minimum visibility
+    final widthPx = math.max(
+      radius * degreesToRadians(attachment.widthDegrees),
+      1.5,
+    );
+    
+    // Total length for T calculation? 
+    // We approximate T based on segment index for uniform distribution
+    // Or we could use actual distance, but index based is smoother for animations usually.
+
+    for (int i = 0; i < segmentCount; i++) {
+      // Skip if both ends are hidden (and not above horizon/edge case)
+      // For robustness, we draw if ANY part is potentially visible or sticking out
+      // The shader handles masking for "behind" parts
+      final p1 = points2D[i];
+      final p2 = points2D[i + 1];
+      final v1 = points3D[i];
+      // final v2 = points3D[i + 1];
+      
+      final seg = p1 - p2;
+      final segLen = seg.distance;
+      
+      // When the motion is almost purely toward or away from the camera,
+      // the projected 2D length can approach zero. Instead of skipping,
+      // render a minimal capsule (dot-like) so the whisper remains visible.
+      final double minLenPx = math.max(1.0, widthPx);
+      final double ribbonLen = segLen < minLenPx ? minLenPx : segLen;
+      final Offset dir2D = segLen > 1e-3 ? (seg / segLen) : const Offset(0, -1);
+
+      final direction = dir2D * ribbonLen;
+      final length = ribbonLen;
+
+      // T goes from 1.0 (Head) to 0.0 (Tail)
+      // i=0 is Head (T=1). i=segmentCount is Tail (T=0).
+      // Segment i goes from T_start to T_end
+      final tStart = 1.0 - (i / segmentCount);
+      final tEnd = 1.0 - ((i + 1) / segmentCount);
+
+      // Match CPU: width increases from tail to head
+      // Increase size difference: stronger ease-in to grow more near the head
+      final double eased = tStart * tStart * tStart; // cubic
+      final double headMul = 1.0 + (attachment.headWidthMultiplier - 1.0) * eased;
+
+      // Determine masking
+      // If the segment start is front-facing, we don't mask.
+      // If it's back-facing, we mask (draw only outside).
+      final isFront = v1.x > 0;
+      final maskOutsideOnly = !isFront;
+
+      final bounds = Rect.fromCenter(
+        center: p1 + direction * 0.5,
+        width: math.max(length, widthPx) * 4,
+        height: math.max(length, widthPx) * 4,
+      );
+
+      ShaderTrailRenderer.instance.drawRibbon(
+        canvas: canvas,
+        bounds: bounds,
+        head: p1,
+        direction: direction,
+        lengthPx: length, // Segment length
+        widthPx: widthPx,
+        headWidthMultiplier: headMul,
+        // Ideally headWidthMultiplier applies to the WHOLE trail. 
+        // But here we draw segments. The shader applies taper based on T?
+        // If the shader uses T for width, then headWidthMultiplier is fine.
+        // If shader uses length for taper, we have a problem.
+        // Looking at shader inputs: uWidth, uHeadMul.
+        // If shader logic is: width = uWidth * mix(1.0, uHeadMul, t);
+        // Then passing global params + local T is correct.
+        headColor: attachment.headColor,
+        tailColor: attachment.tailColor,
+        colorStops: attachment.gradientStops ?? [],
+        segmentT0: tStart,
+        segmentT1: tEnd,
+        maskOutsideOnly: maskOutsideOnly,
+        glowColor: attachment.glowColor,
+        glowStrength: attachment.glowStrength,
+        shimmer: attachment.shimmer,
+        timeSeconds: DateTime.now().millisecondsSinceEpoch / 1000.0,
+        globeCenter: center,
+        globeRadius: radius,
+        zoom: 1.0,
+        rotationY: rotationY,
+        rotationZ: rotationZ,
+      );
+    }
+  }
+
+  List<GlobeCoordinates> _generateAbsoluteVertices(
+      GlobeCoordinates start, List<GlobeCoordinates> relatives) {
+    return relatives.map((relative) {
+      double newLat = start.latitude + relative.latitude;
+      double newLon = start.longitude + relative.longitude;
+
+      // Normalize latitude with pole-crossing logic
+      while (newLat > 90) {
+        newLat = 180 - newLat;
+        newLon += 180;
+      }
+      while (newLat < -90) {
+        newLat = -180 - newLat;
+        newLon += 180;
+      }
+
+      // Wrap longitude into [0, 360)
+      while (newLon >= 360) newLon -= 360;
+      while (newLon < 0) newLon += 360;
+
+      return GlobeCoordinates(newLat, newLon);
+    }).toList();
   }
 
   void _drawTrail(Canvas canvas, TrailRenderData trailData, Size size) {
