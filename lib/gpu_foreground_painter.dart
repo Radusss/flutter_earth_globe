@@ -192,7 +192,9 @@ class GlobeForegroundRenderer {
 
       // Calculate 3D position
       // Apply altitude to the point position
-      final pointRadius = radius + point.altitude;
+      // Prefer style altitude if set (Globe.GL style), otherwise fallback to point altitude
+      final effectiveAltitude = point.style.altitude != 0 ? point.style.altitude : point.altitude;
+      final pointRadius = radius + effectiveAltitude;
       final cartesian3D = getSpherePosition3D(
         point.coordinates,
         pointRadius,
@@ -206,11 +208,18 @@ class GlobeForegroundRenderer {
         center.dy - cartesian3D.z,
       );
 
-      // Visibility check (front-facing)
-      final isVisible = cartesian3D.x > 0;
+      // Visibility check - points above the globe can be visible even when
+      // coordinates are "behind" the globe
+      final projectedDistFromCenter = math
+          .sqrt(cartesian3D.y * cartesian3D.y + cartesian3D.z * cartesian3D.z);
+      final isAboveSilhouette =
+          projectedDistFromCenter > radius && effectiveAltitude > 0;
+      final horizonThreshold = -effectiveAltitude * 0.3;
+      final isVisible = cartesian3D.x > horizonThreshold || isAboveSilhouette;
 
       // Depth calculation for scaling (normalized 0-1)
-      final depth = isVisible ? (cartesian3D.x / pointRadius).clamp(0.0, 1.0) : 0.0;
+      final depth =
+          isVisible ? (cartesian3D.x / pointRadius).clamp(0.0, 1.0) : 0.0;
 
       // Calculate surface normal (normalized cartesian3D is the surface normal)
       // This gives us the direction the surface is facing
@@ -940,10 +949,7 @@ class GpuForegroundPainter extends CustomPainter {
     // Use proper spherical scaling
     // width in pixels = radius * width_in_radians
     // Ensure minimum width for visibility
-    final widthPx = math.max(
-      radius * degreesToRadians(attachment.widthDegrees),
-      1.5,
-    );
+    final widthPx = radius * degreesToRadians(attachment.widthDegrees);
     final lengthPx = radius * degreesToRadians(attachment.lengthDegrees);
 
     // Draw using the shader renderer
@@ -1044,10 +1050,7 @@ class GpuForegroundPainter extends CustomPainter {
     // 3. Draw segments
     final segmentCount = vertices.length - 1;
     // Width scales with zoom (radius is zoomed), but ensure minimum visibility
-    final widthPx = math.max(
-      radius * degreesToRadians(attachment.widthDegrees),
-      1.5,
-    );
+    final widthPx = radius * degreesToRadians(attachment.widthDegrees);
     
     // Total length for T calculation? 
     // We approximate T based on segment index for uniform distribution
@@ -1358,6 +1361,17 @@ class GpuForegroundPainter extends CustomPainter {
     // Apply transition animation
     final alpha = style.color.a * point.transitionProgress;
 
+    // Draw glow effect
+    if (style.glowSigma > 0) {
+      final glowPaint = Paint()
+        ..color = style.color.withValues(alpha: alpha)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, style.glowSigma);
+      canvas.drawCircle(
+          point.position2D, scaledSize * style.glowScale, glowPaint);
+    }
+
+    if (style.glowOnly) return;
+
     // Draw point with altitude effect
     final altitudeOffset = style.altitude * point.depth * 2.0 * globeScale;
     final drawPos =
@@ -1394,10 +1408,11 @@ class GpuForegroundPainter extends CustomPainter {
       ..style = PaintingStyle.fill;
 
     // Width = major axis (full), Height = minor axis (foreshortened)
+    // Reduce the solid dot size slightly to match legacy look (approx 70%)
     final rect = Rect.fromCenter(
       center: Offset.zero,
-      width: majorAxis,
-      height: minorAxis,
+      width: majorAxis * 0.7,
+      height: minorAxis * 0.7,
     );
     canvas.drawOval(rect, paint);
 

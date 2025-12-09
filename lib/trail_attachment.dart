@@ -177,7 +177,7 @@ class ShaderTrailAttachment {
     required this.pointId,
     this.relativeVertices = const <GlobeCoordinates>[],
     this.lengthDegrees = 2.0,
-    this.widthDegrees = 0.15,
+    this.widthDegrees = 0.1,
     this.gradientStops,
     this.tailColor = const Color(0x3300BFFF),
     this.headColor = const Color(0xE6FFFFFF),

@@ -1639,27 +1639,32 @@ class RotatingGlobeState extends State<RotatingGlobe>
           // Sphere layer - only repaints when rotation/zoom changes
           RepaintBoundary(child: gpuWidget),
           // Foreground layer - repaints on hover/click/animation via ValueListenableBuilder
-          ValueListenableBuilder<int>(
-            valueListenable: _animationNotifier,
-            builder: (context, animValue, child) {
-              // Recalculate foreground positions on each animation frame
-              // This updates dash offsets for continuous dash animation
-              _calculateForegroundPositions(constraints);
+          AnimatedBuilder(
+            animation: widget.controller.foregroundNotifier,
+            builder: (context, _) {
+              return ValueListenableBuilder<int>(
+                valueListenable: _animationNotifier,
+                builder: (context, animValue, child) {
+                  // Recalculate foreground positions on each animation frame
+                  // This updates dash offsets for continuous dash animation
+                  _calculateForegroundPositions(constraints);
 
-              return ValueListenableBuilder<Offset?>(
-                valueListenable: _hoverNotifier,
-                builder: (context, hoverValue, child) {
                   return ValueListenableBuilder<Offset?>(
-                    valueListenable: _clickNotifier,
-                    builder: (context, clickValue, child) {
-                      return RepaintBoundary(
-                        child: CustomPaint(
-                          // Use Canvas for all foreground elements including satellites
-                          painter: _buildGpuForegroundPainter(
-                              skipSatelliteShapes: false),
-                          size:
-                              Size(constraints.maxWidth, constraints.maxHeight),
-                        ),
+                    valueListenable: _hoverNotifier,
+                    builder: (context, hoverValue, child) {
+                      return ValueListenableBuilder<Offset?>(
+                        valueListenable: _clickNotifier,
+                        builder: (context, clickValue, child) {
+                          return RepaintBoundary(
+                            child: CustomPaint(
+                              // Use Canvas for all foreground elements including satellites
+                              painter: _buildGpuForegroundPainter(
+                                  skipSatelliteShapes: false),
+                              size: Size(
+                                  constraints.maxWidth, constraints.maxHeight),
+                            ),
+                          );
+                        },
                       );
                     },
                   );
@@ -1690,27 +1695,32 @@ class RotatingGlobeState extends State<RotatingGlobe>
                   size: Size(constraints.maxWidth, constraints.maxHeight),
                 ),
               ),
-              ValueListenableBuilder<int>(
-                valueListenable: _animationNotifier,
-                builder: (context, animValue, child) {
-                  // Recalculate foreground positions on each animation frame
-                  // This updates dash offsets for continuous dash animation
-                  _calculateForegroundPositions(constraints);
+              AnimatedBuilder(
+                animation: widget.controller.foregroundNotifier,
+                builder: (context, _) {
+                  return ValueListenableBuilder<int>(
+                    valueListenable: _animationNotifier,
+                    builder: (context, animValue, child) {
+                      // Recalculate foreground positions on each animation frame
+                      // This updates dash offsets for continuous dash animation
+                      _calculateForegroundPositions(constraints);
 
-                  return ValueListenableBuilder<Offset?>(
-                    valueListenable: _hoverNotifier,
-                    builder: (context, hoverValue, child) {
                       return ValueListenableBuilder<Offset?>(
-                        valueListenable: _clickNotifier,
-                        builder: (context, clickValue, child) {
-                          return RepaintBoundary(
-                            child: CustomPaint(
-                              // Use Canvas-based rendering for all foreground elements
-                              painter: _buildGpuForegroundPainter(
-                                  skipSatelliteShapes: false),
-                              size: Size(
-                                  constraints.maxWidth, constraints.maxHeight),
-                            ),
+                        valueListenable: _hoverNotifier,
+                        builder: (context, hoverValue, child) {
+                          return ValueListenableBuilder<Offset?>(
+                            valueListenable: _clickNotifier,
+                            builder: (context, clickValue, child) {
+                              return RepaintBoundary(
+                                child: CustomPaint(
+                                  // Use Canvas-based rendering for all foreground elements
+                                  painter: _buildGpuForegroundPainter(
+                                      skipSatelliteShapes: false),
+                                  size: Size(
+                                      constraints.maxWidth, constraints.maxHeight),
+                                ),
+                              );
+                            },
                           );
                         },
                       );
