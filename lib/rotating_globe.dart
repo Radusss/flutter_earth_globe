@@ -542,7 +542,8 @@ class RotatingGlobeState extends State<RotatingGlobe>
   double _calculateDayNightFactor(double lat, double lon) {
     // Convert sun position to radians
     final sunLatRad = widget.controller.sunLatitude * math.pi / 180;
-    final sunLonRad = widget.controller.sunLongitude * math.pi / 180;
+    // Negate sun longitude to match the inverted texture coordinate system
+    final sunLonRad = -widget.controller.sunLongitude * math.pi / 180;
 
     // Calculate the angle between the point and the sun
     // Using spherical law of cosines
@@ -1205,7 +1206,8 @@ class RotatingGlobeState extends State<RotatingGlobe>
         center: sphereCenter,
         rotationX: rotationX,
         rotationZ: rotationZ,
-        sunLongitude: widget.controller.sunLongitude,
+        // Negate sun longitude to match the inverted texture coordinate system
+        sunLongitude: -widget.controller.sunLongitude,
         sunLatitude: widget.controller.sunLatitude,
         blendFactor: widget.controller.dayNightBlendFactor,
         isDayNightEnabled: hasDayNightCycle,
