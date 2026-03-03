@@ -58,7 +58,7 @@ class FlutterEarthGlobeController extends ChangeNotifier {
   ImageConfiguration
       backgroundConfiguration; // The configuration of the background image.
 
-  late AnimationController
+  AnimationController?
       rotationController; // The animation controller for sphere rotation.
 
   double rotationSpeed; // The speed of the rotation.
@@ -766,7 +766,7 @@ class FlutterEarthGlobeController extends ChangeNotifier {
   void startRotation({double? rotationSpeed}) {
     _isRotating = true;
     this.rotationSpeed = rotationSpeed ?? this.rotationSpeed;
-    rotationController.forward();
+    rotationController?.forward();
     notifyListeners();
   }
 
@@ -779,7 +779,7 @@ class FlutterEarthGlobeController extends ChangeNotifier {
   /// ```
   void stopRotation() {
     _isRotating = false;
-    rotationController.stop();
+    rotationController?.stop();
     notifyListeners();
   }
 
@@ -793,9 +793,9 @@ class FlutterEarthGlobeController extends ChangeNotifier {
   void toggleRotation() {
     _isRotating = !_isRotating;
     if (_isRotating) {
-      rotationController.forward();
+      rotationController?.forward();
     } else {
-      rotationController.stop();
+      rotationController?.stop();
     }
     notifyListeners();
   }
@@ -1212,7 +1212,7 @@ class FlutterEarthGlobeController extends ChangeNotifier {
     onPointConnectionAdded = null;
     onResetGlobeRotation = null;
     onLoaded = null;
-    rotationController.dispose();
+    rotationController?.dispose();
     foregroundNotifier.dispose();
     super.dispose();
   }

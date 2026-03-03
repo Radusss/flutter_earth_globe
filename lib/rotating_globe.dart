@@ -205,9 +205,9 @@ class RotatingGlobeState extends State<RotatingGlobe>
           // Update hover coordinates during rotation if mouse is over the globe
           _updateHoverCoordinatesDuringRotation();
 
-          if (widget.controller.rotationController.isCompleted) {
+          if (widget.controller.rotationController?.isCompleted ?? false) {
             if (widget.controller.isRotating) {
-              widget.controller.rotationController.repeat();
+              widget.controller.rotationController?.repeat();
             }
           }
         }
@@ -526,7 +526,8 @@ class RotatingGlobeState extends State<RotatingGlobe>
   @override
   void dispose() {
     widget.controller.removeListener(_update);
-    widget.controller.rotationController.dispose();
+    widget.controller.rotationController?.dispose();
+    widget.controller.rotationController = null;
     _lineMovingController.stop();
     _lineMovingController.dispose();
     _decelerationController.dispose();
@@ -1820,7 +1821,7 @@ class RotatingGlobeState extends State<RotatingGlobe>
                 }
 
                 if (widget.controller.isRotating) {
-                  widget.controller.rotationController.stop();
+                  widget.controller.rotationController?.stop();
                 }
                 setState(() {});
               },
@@ -1887,8 +1888,8 @@ class RotatingGlobeState extends State<RotatingGlobe>
                 }
 
                 if (widget.controller.isRotating) {
-                  widget.controller.rotationController.forward(
-                      from: widget.controller.rotationController.value);
+                  widget.controller.rotationController?.forward(
+                      from: widget.controller.rotationController?.value ?? 0.0);
                 }
               },
               child: GestureDetector(
