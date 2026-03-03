@@ -22,11 +22,14 @@ class ShaderTrailRenderer {
   final Paint _paint = Paint();
   // Uniform layout must match the order in shaders/trail.frag
   // [uHead.x, uHead.y, uDir.x, uDir.y, uLength, uWidth, uHeadMul,
-  //  uHeadColor.r,g,b,a, uTailColor.r,g,b,a, uGlowColor.r,g,b,a, uGlow,
+  //  uGlowColor.r,g,b,a, uGlow,
   //  uStop0.r,g,b,a, uStop1.r,g,b,a, uStop2.r,g,b,a, uStop3.r,g,b,a,
   //  uStopCount, uT0, uT1, uMaskOutside, uShimmer, uTime, uCenter.x, uCenter.y,
-  //  uRadius, uZoom, uRotationY, uRotationZ]
-  final Float32List _uniforms = Float32List(48);
+  //  uRadius]
+  // NOTE: uHeadColor, uTailColor, uZoom, uRotationY, uRotationZ are not declared in
+  // the shader (dead-code elimination would strip them and shift indices), so they
+  // must not be packed here.
+  final Float32List _uniforms = Float32List(37);
 
   /// Starts loading the shader program if not already started.
   void warmUp() {
@@ -148,16 +151,6 @@ class ShaderTrailRenderer {
     _uniforms[i++] = widthPx;
     _uniforms[i++] = headWidthMultiplier;
 
-    _uniforms[i++] = headColor.red / 255.0;
-    _uniforms[i++] = headColor.green / 255.0;
-    _uniforms[i++] = headColor.blue / 255.0;
-    _uniforms[i++] = headColor.opacity;
-
-    _uniforms[i++] = tailColor.red / 255.0;
-    _uniforms[i++] = tailColor.green / 255.0;
-    _uniforms[i++] = tailColor.blue / 255.0;
-    _uniforms[i++] = tailColor.opacity;
-
     _uniforms[i++] = glowColor.red / 255.0;
     _uniforms[i++] = glowColor.green / 255.0;
     _uniforms[i++] = glowColor.blue / 255.0;
@@ -211,9 +204,7 @@ class ShaderTrailRenderer {
     _uniforms[i++] = globeCenter.dx;
     _uniforms[i++] = globeCenter.dy;
     _uniforms[i++] = globeRadius;
-    _uniforms[i++] = zoom;
-    _uniforms[i++] = rotationY;
-    _uniforms[i++] = rotationZ;
+    assert(i == _uniforms.length, 'Uniform count mismatch: packed $i, buffer ${_uniforms.length}');
 
     // Older Flutter stable exposes setFloat on FragmentShader
     final ui.FragmentShader shader = _shader!;

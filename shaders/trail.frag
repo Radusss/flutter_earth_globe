@@ -12,8 +12,6 @@ uniform float uLength;     // trail length in pixels (positive)
 uniform float uWidth;      // base width in pixels at tail
 uniform float uHeadMul;    // head width multiplier (CPU parity)
 
-uniform vec4 uHeadColor;   // RGBA
-uniform vec4 uTailColor;   // RGBA
 uniform vec4 uGlowColor;   // RGBA
 uniform float uGlow;       // glow thickness multiplier
 // Up to 4 gradient stops tail->head for CPU parity; if uStopCount<4, repeats end
@@ -32,10 +30,6 @@ uniform float uTime;       // seconds for subtle shimmer if desired
 
 uniform vec2 uCenter;      // globe center in pixels
 uniform float uRadius;     // globe radius in pixels
-uniform float uZoom;       // current zoom (placeholder for future tuning)
-uniform float uRotationY;  // sphere rotation Y (placeholder)
-uniform float uRotationZ;  // sphere rotation Z (placeholder)
-
 // Signed distance to a constant-width capsule with rounded caps for this segment.
 // Returns: (distToEdge, t01Local) where t01Local is 0 at tail and 1 at head of this segment.
 vec2 ribbonDistance(vec2 p, vec2 head, vec2 dir, float ribbonLength, float baseWidth) {
